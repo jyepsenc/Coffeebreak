@@ -1,0 +1,17 @@
+{
+  "name": "Coffee Break - Food Metrics",
+  "short_name": "CoffeeBreak",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#121316",
+  "theme_color": "#121316",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "./icon.jpg",
+      "sizes": "192x192 512x512",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ]
+}

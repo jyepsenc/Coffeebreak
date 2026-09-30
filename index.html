@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Coffee Break - Food Metrics</title>
+  
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#121316">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="CoffeeBreak">
+  <link rel="apple-touch-icon" href="./icon.jpg">
+  <link rel="icon" type="image/jpeg" href="./icon.jpg">
+
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+</head>
+<body>
+
+  <header>
+    <div class="brand">
+      <h1 class="brand-title">Coffee Break</h1>
+      <span class="brand-subtitle">Food Metrics</span>
+    </div>
+    <nav class="tab-nav">
+      <button class="tab-btn active" data-tab="tab-diario">Diario</button>
+      <button class="tab-btn" data-tab="tab-alimentos">Alimentos</button>
+      <button class="tab-btn" data-tab="tab-recetas">Recetas</button>
+      <button class="tab-btn" data-tab="tab-metas">Metas</button>
+      <button class="tab-btn" data-tab="tab-sugerencias">Sugerencias</button>
+      <button class="tab-btn" data-tab="tab-backup">Respaldo</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- TAB 1: DIARIO -->
+    <section id="tab-diario" class="tab-content active">
+      <div class="card dashboard">
+        <div class="dashboard-header">
+          <h2>Balance del Día</h2>
+          <input type="date" id="diario-fecha">
+        </div>
+
+        <div class="balance-kcal">
+          <div>Consumido: <span id="dash-kcal-consumido">0</span> kcal</div>
+          <div class="kcal-restante"><strong id="dash-kcal-restante">0</strong> kcal restantes</div>
+          <div>Meta: <span id="dash-kcal-meta">0</span> kcal</div>
+        </div>
+
+        <div class="macros-balance-grid">
+          <div class="macro-col" id="col-prot">
+            <span>Proteínas</span>
+            <strong id="dash-prot-restante">0g</strong>
+            <small id="dash-prot-sub">0 / 0g</small>
+          </div>
+          <div class="macro-col" id="col-carbs">
+            <span>Carbos</span>
+            <strong id="dash-carbs-restante">0g</strong>
+            <small id="dash-carbs-sub">0 / 0g</small>
+          </div>
+          <div class="macro-col" id="col-grasas">
+            <span>Grasas</span>
+            <strong id="dash-grasas-restante">0g</strong>
+            <small id="dash-grasas-sub">0 / 0g</small>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-row">
+          <h2>Comidas Registradas</h2>
+          <button id="btn-nueva-categoria" class="btn-secondary">+ Categoría</button>
+        </div>
+        <div id="contenedor-categorias"></div>
+      </div>
+    </section>
+
+    <!-- TAB 2: ALIMENTOS, ESCÁNER Y CALCULADORA -->
+    <section id="tab-alimentos" class="tab-content">
+      <div class="card">
+        <h2>Escanear Tabla con Foto</h2>
+        <p class="nota-filtro" style="margin-bottom: 0.8rem;">
+          Sube una foto clara. Los datos se normalizan para que revises y confirmes antes de guardar.
+        </p>
+
+        <div>
+          <input type="file" id="input-foto-tabla" accept="image/*" style="display: none;">
+          <button type="button" class="btn-primary" onclick="document.getElementById('input-foto-tabla').click()">
+            📷 Subir / Tomar Foto de la Tabla
+          </button>
+        </div>
+
+        <div id="ocr-preview-container" class="hidden" style="margin-top: 1rem;">
+          <div style="text-align: center;">
+            <img id="img-preview" alt="Foto cargada" style="max-width: 100%; max-height: 220px; border-radius: 8px; border: 1px solid var(--border);">
+          </div>
+          <div id="ocr-status" style="margin-top: 0.6rem; font-size: 0.85rem; color: var(--primary); text-align: center; font-weight: bold;">
+            Procesando imagen...
+          </div>
+          <details style="margin-top: 0.6rem; font-size: 0.8rem;">
+            <summary>Ver texto exacto detectado</summary>
+            <pre id="ocr-raw-text" style="white-space: pre-wrap; background: var(--bg); padding: 0.5rem; border-radius: 6px; margin-top: 0.4rem; color: var(--text-muted); max-height: 150px; overflow-y: auto;"></pre>
+          </details>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Calculadora por Gramos</h2>
+        <div class="form-group">
+          <label for="select-alimento">Alimento o Receta:</label>
+          <select id="select-alimento">
+            <option value="">-- Elige un elemento --</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="input-gramos">Peso a consumir (gramos):</label>
+          <input type="number" id="input-gramos" placeholder="Ej: 150" min="0" step="any">
+        </div>
+        <div id="resultado-calculo" class="resultado-box hidden">
+          <p class="kcal-destacada"><strong id="calc-kcal">0</strong> Kcal</p>
+          <div class="grid-macros">
+            <div>Prot: <strong id="calc-prot">0</strong> g</div>
+            <div>Carb: <strong id="calc-carbs">0</strong> g</div>
+            <div>Grasa: <strong id="calc-grasas">0</strong> g</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Registrar / Confirmar Alimento (por 100g)</h2>
+        <form id="form-alimento">
+          <div class="form-group">
+            <label for="nombre">Nombre del Alimento *</label>
+            <input type="text" id="nombre" required placeholder="Ej: Yogurt Batido Frutilla">
+          </div>
+          <div class="form-group">
+            <label for="marca">Marca (opcional)</label>
+            <input type="text" id="marca" placeholder="Ej: Colun">
+          </div>
+
+          <fieldset>
+            <legend>Valores Principales por 100g</legend>
+            <div class="grid-form">
+              <div>
+                <label for="kcal">Kcal *</label>
+                <input type="number" id="kcal" step="any" min="0" required placeholder="0">
+              </div>
+              <div>
+                <label for="proteinas">Proteínas (g) *</label>
+                <input type="number" id="proteinas" step="any" min="0" required placeholder="0">
+              </div>
+              <div>
+                <label for="carbohidratos">Carbos (g) *</label>
+                <input type="number" id="carbohidratos" step="any" min="0" required placeholder="0">
+              </div>
+              <div>
+                <label for="grasas">Grasas Totales (g) *</label>
+                <input type="number" id="grasas" step="any" min="0" required placeholder="0">
+              </div>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Subtipos Detallados (Opcionales)</legend>
+            <div class="grid-form">
+              <div><label for="azucares">Azúcares (g)</label><input type="number" id="azucares" step="any" min="0" value="0"></div>
+              <div><label for="fibra">Fibra (g)</label><input type="number" id="fibra" step="any" min="0" value="0"></div>
+              <div><label for="sat">G. Sat. (g)</label><input type="number" id="sat" step="any" min="0" value="0"></div>
+              <div><label for="mono">G. Mono. (g)</label><input type="number" id="mono" step="any" min="0" value="0"></div>
+              <div><label for="poli">G. Poli. (g)</label><input type="number" id="poli" step="any" min="0" value="0"></div>
+              <div><label for="trans">G. Trans (g)</label><input type="number" id="trans" step="any" min="0" value="0"></div>
+              <div><label for="sodio">Sodio (mg)</label><input type="number" id="sodio" step="any" min="0" value="0"></div>
+              <div><label for="colesterol">Colesterol (mg)</label><input type="number" id="colesterol" step="any" min="0" value="0"></div>
+            </div>
+          </fieldset>
+
+          <button type="submit" class="btn-primary" style="background-color: var(--success);">
+            ✓ Confirmar y Guardar Alimento
+          </button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2>Mis Alimentos Guardados</h2>
+        <ul id="lista-alimentos" class="lista-items"></ul>
+      </div>
+    </section>
+
+    <!-- TAB 3: RECETAS COMPUESTAS -->
+    <section id="tab-recetas" class="tab-content">
+      <div class="card">
+        <h2>Crear Receta Compuesta</h2>
+        <div class="form-group">
+          <label for="receta-nombre">Nombre de la Receta *</label>
+          <input type="text" id="receta-nombre" placeholder="Ej: Porridge con Frutos Secos">
+        </div>
+
+        <fieldset>
+          <legend>Agregar Ingrediente</legend>
+          <div class="form-group">
+            <select id="receta-select-alimento">
+              <option value="">-- Elige un alimento base --</option>
+            </select>
+          </div>
+          <div class="grid-form">
+            <div>
+              <label>Gramos usados</label>
+              <input type="number" id="receta-gramos-ingrediente" placeholder="100" min="1" step="any">
+            </div>
+            <div style="display: flex; align-items: flex-end;">
+              <button type="button" id="btn-agregar-ingrediente" class="btn-secondary" style="width: 100%;">Agregar</button>
+            </div>
+          </div>
+        </fieldset>
+
+        <h3>Ingredientes agregados:</h3>
+        <ul id="receta-lista-ingredientes" class="lista-items" style="margin-bottom: 1rem;">
+          <li style="color: var(--text-muted);">Sin ingredientes aún.</li>
+        </ul>
+
+        <div id="receta-totales-preview" class="resultado-box hidden">
+          <h4>Aporte Total de la Receta</h4>
+          <p><strong id="receta-total-kcal">0</strong> Kcal | Peso Total: <span id="receta-total-peso">0</span>g</p>
+          <small>Prot: <span id="receta-total-prot">0</span>g | Carbs: <span id="receta-total-carbs">0</span>g | Grasas: <span id="receta-total-grasas">0</span>g</small>
+        </div>
+
+        <button type="button" id="btn-guardar-receta" class="btn-primary" style="margin-top: 1rem;">Guardar Receta</button>
+      </div>
+
+      <div class="card">
+        <h2>Mis Recetas Guardadas</h2>
+        <ul id="lista-recetas" class="lista-items"></ul>
+      </div>
+    </section>
+
+    <!-- TAB 4: METAS DIARIAS -->
+    <section id="tab-metas" class="tab-content">
+      <div class="card">
+        <h2>Configurar Metas Diarias</h2>
+        <form id="form-metas">
+          <div class="form-group">
+            <label for="meta-kcal">Calorías Totales Objetivo (Kcal) *</label>
+            <input type="number" id="meta-kcal" required min="100" step="any">
+          </div>
+          <div class="grid-form">
+            <div>
+              <label for="meta-prot">Proteínas Objetivo (g) *</label>
+              <input type="number" id="meta-prot" required min="0" step="any">
+            </div>
+            <div>
+              <label for="meta-carbs">Carbos Objetivo (g) *</label>
+              <input type="number" id="meta-carbs" required min="0" step="any">
+            </div>
+            <div>
+              <label for="meta-grasas">Grasas Objetivo (g) *</label>
+              <input type="number" id="meta-grasas" required min="0" step="any">
+            </div>
+          </div>
+          <button type="submit" class="btn-primary" style="margin-top: 1rem;">Guardar Metas</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- TAB 5: SUGERENCIAS -->
+    <section id="tab-sugerencias" class="tab-content">
+      <div class="card">
+        <h2>Sugerencias de Cuadre Exacto</h2>
+        <p class="nota-filtro">
+          <strong>Regla:</strong> Techo absoluto en Kcal restantes. Si una opción se pasa en algún macro, se resalta en <span style="color: var(--danger); font-weight: bold;">rojo</span>.
+        </p>
+
+        <div class="form-group" style="margin-top: 0.8rem;">
+          <label for="sug-modo">Tipo de sugerencias:</label>
+          <select id="sug-modo">
+            <option value="individuales">Alimentos / Recetas individuales</option>
+            <option value="combinaciones">Combinaciones habituales con sentido (Pares de alimentos)</option>
+            <option value="todos">Mostrar ambos</option>
+          </select>
+        </div>
+
+        <button id="btn-calcular-sugerencias" class="btn-primary">Generar Sugerencias</button>
+
+        <div id="contenedor-sugerencias" style="margin-top: 1.2rem;"></div>
+      </div>
+    </section>
+
+    <!-- TAB 6: RESPALDO (SIN BLOQUEOS EN SAFARI / IOS) -->
+    <section id="tab-backup" class="tab-content">
+      <div class="card">
+        <h2>Copia de Seguridad y Portabilidad</h2>
+        <p class="nota-filtro" style="margin-bottom: 1rem;">
+          Genera el texto de respaldo para guardarlo en la app <strong>Notas</strong> de tu iPhone o descárgalo como archivo.
+        </p>
+
+        <!-- SECCIÓN EXPORTAR -->
+        <button id="btn-generar-texto-backup" class="btn-primary" style="margin-bottom: 0.6rem;">
+          📄 Ver y Copiar Texto de Respaldo
+        </button>
+
+        <div id="contenedor-texto-exportado" class="hidden" style="margin-bottom: 1.2rem;">
+          <label for="txt-backup-generado" style="color: var(--primary); font-weight: bold;">Copia este contenido completo:</label>
+          <textarea id="txt-backup-generado" rows="5" readonly style="width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem; font-family: monospace; font-size: 0.75rem;"></textarea>
+          <button id="btn-seleccionar-todo" class="btn-secondary" style="width: 100%; margin-top: 0.4rem;">
+            Seleccionar Todo el Texto
+          </button>
+        </div>
+
+        <button id="btn-descargar-archivo" class="btn-secondary" style="width: 100%; margin-bottom: 1.2rem;">
+          📥 Descargar como Archivo .json
+        </button>
+
+        <!-- SECCIÓN RESTAURAR -->
+        <div style="border-top: 1px solid var(--border); padding-top: 1.2rem;">
+          <h3>Restaurar Datos</h3>
+          <p class="nota-filtro" style="margin-bottom: 0.6rem;">
+            Pega aquí el texto que tengas guardado en Notas:
+          </p>
+          <textarea id="txt-importar-manual" rows="4" style="width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem; font-family: monospace; font-size: 0.75rem;" placeholder="Pega aquí el contenido JSON..."></textarea>
+          <button id="btn-restaurar-texto" class="btn-primary" style="background-color: var(--success); margin-top: 0.5rem;">
+            ✓ Restaurar desde Texto Pegado
+          </button>
+
+          <p class="nota-filtro" style="margin-top: 1rem; margin-bottom: 0.4rem;">O carga el archivo .json si lo tienes en el teléfono:</p>
+          <label class="btn-secondary" style="display: block; text-align: center; padding: 0.6rem; cursor: pointer;">
+            📂 Cargar Archivo .json
+            <input type="file" id="input-importar-backup" accept=".json,application/json" style="display: none;">
+          </label>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
