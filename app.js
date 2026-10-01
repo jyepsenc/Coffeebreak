@@ -791,7 +791,7 @@ window.eliminarEntradaDiario = function(id) {
 };
 
 /* ============================================================
-   SECCIÓN: SUGERENCIAS INTELIGENTES
+   SECCIÓN: SUGERENCIAS INTELIGENTES (CON CASCADA POR DENSIDAD)
    ============================================================ */
 document.getElementById('btn-calcular-sugerencias').addEventListener('click', () => {
   const rest = window.restantesGlobales || { kcal: 0, proteinas: 0, carbohidratos: 0, grasas: 0 };
@@ -806,6 +806,7 @@ document.getElementById('btn-calcular-sugerencias').addEventListener('click', ()
   const modo = document.getElementById('sug-modo').value;
   const sugerencias = [];
 
+  // 1. INDIVIDUALES
   if (modo === 'individuales' || modo === 'todos') {
     const catalogo = [
       ...alimentosCache.map(a => ({ nombre: a.nombre, kcal100: a.kcal, p100: a.proteinas, c100: a.carbohidratos, g100: a.grasas, tipo: 'Alimento' })),
@@ -836,6 +837,7 @@ document.getElementById('btn-calcular-sugerencias').addEventListener('click', ()
     });
   }
 
+  // 2. COMBINACIONES HABITUALES (Pares de recetas manteniendo su ratio original)
   if (modo === 'combinaciones' || modo === 'todos') {
     recetasCache.forEach(rec => {
       if (rec.ingredientes && rec.ingredientes.length >= 2) {
@@ -858,7 +860,7 @@ document.getElementById('btn-calcular-sugerencias').addEventListener('click', ()
 
             sugerencias.push({
               titulo: `${ing1.nombre} + ${ing2.nombre}`,
-              tipo: `Combinación habitual (De receta: ${rec.nombre})`,
+              tipo: `Combinación habitual (${rec.nombre})`,
               descripcion: `
                 • ${ing1.nombre}: <span class="sug-gramos">${g1Final.toFixed(1)} g</span><br>
                 • ${ing2.nombre}: <span class="sug-gramos">${g2Final.toFixed(1)} g</span>
@@ -877,8 +879,89 @@ document.getElementById('btn-calcular-sugerencias').addEventListener('click', ()
     });
   }
 
+  // 3. CASCADA POR DENSIDAD CALÓRICA (Mayor densidad Kcal/100g en cantidad pequeña)
+  if (modo === 'densidad' || modo === 'todos') {
+    recetasCache.forEach(rec => {
+      if (rec.ingredientes && rec.ingredientes.length >= 2) {
+        // Obtener todos los ingredientes de la receta con sus Kcal/100g
+        const listaIng = rec.ingredientes.map(i => {
+          const ali = alimentosCache.find(a => a.id === i.alimentoId);
+          return ali ? { ...ali, baseGramosOriginal: i.gramos } : null;
+        }).filter(Boolean);
+
+        if (listaIng.length >= 2) {
+          // Ordenar de MAYOR a MENOR densidad calórica (Kcal por 100g/ml)
+          listaIng.sort((a, b) => b.kcal - a.kcal);
+
+          let kcalPorCubrir = rest.kcal;
+          let desgloseItems = [];
+          let pTotal = 0, cTotal = 0, gTotal = 0;
+          let posible = true;
+
+          // Asignar cantidad pequeña/controlada a los más densos (máx 15g a 25g o según Kcal)
+          // El último ingrediente (menos denso) ajustará exactamente el remanente calórico
+          for (let i = 0; i < listaIng.length; i++) {
+            const ing = listaIng[i];
+            const esUltimo = (i === listaIng.length - 1);
+
+            let gramosCalculados = 0;
+
+            if (!esUltimo) {
+              // Porción pequeña sugerida para los densos: 15 gramos o un tope calórico del 25% del remanente
+              const porcionPequena = Math.min(15, (kcalPorCubrir * 0.25) / (ing.kcal / 100));
+              gramosCalculados = Math.max(5, Number(porcionPequena.toFixed(1)));
+              const aporteKcal = (ing.kcal * gramosCalculados) / 100;
+
+              if (aporteKcal >= kcalPorCubrir) {
+                // Si incluso una porción pequeña se pasa del remanente, recalculamos al límite
+                gramosCalculados = Number(((kcalPorCubrir / ing.kcal) * 100).toFixed(1));
+              }
+
+              kcalPorCubrir -= (ing.kcal * gramosCalculados) / 100;
+            } else {
+              // El último ingrediente absorbe todo el remanente exacto de Kcal
+              if (ing.kcal <= 0) {
+                posible = false;
+                break;
+              }
+              gramosCalculados = Number(((kcalPorCubrir / ing.kcal) * 100).toFixed(1));
+              kcalPorCubrir = 0;
+            }
+
+            if (gramosCalculados <= 0) {
+              posible = false;
+              break;
+            }
+
+            const f = gramosCalculados / 100;
+            pTotal += ing.proteinas * f;
+            cTotal += ing.carbohidratos * f;
+            gTotal += ing.grasas * f;
+
+            desgloseItems.push(`• <strong>${ing.nombre}</strong> (${ing.kcal} kcal/100g): <span class="sug-gramos">${gramosCalculados} g</span>`);
+          }
+
+          if (posible && desgloseItems.length > 0) {
+            sugerencias.push({
+              titulo: `Cascada por Densidad (${rec.nombre})`,
+              tipo: `Mayor densidad calórica primero`,
+              descripcion: desgloseItems.join('<br>'),
+              kcal: rest.kcal,
+              p: pTotal,
+              c: cTotal,
+              g: gTotal,
+              excesoP: pTotal > rest.proteinas + 0.5 ? pTotal - rest.proteinas : 0,
+              excesoC: cTotal > rest.carbohidratos + 0.5 ? cTotal - rest.carbohidratos : 0,
+              excesoG: gTotal > rest.grasas + 0.5 ? gTotal - rest.grasas : 0
+            });
+          }
+        }
+      }
+    });
+  }
+
   if (sugerencias.length === 0) {
-    cont.innerHTML = '<p style="color:var(--text-muted)">No hay sugerencias disponibles.</p>';
+    cont.innerHTML = '<p style="color:var(--text-muted)">No hay sugerencias disponibles para la modalidad seleccionada.</p>';
     return;
   }
 
@@ -907,7 +990,7 @@ document.getElementById('btn-calcular-sugerencias').addEventListener('click', ()
 });
 
 /* ============================================================
-   SECCIÓN: EXPORTAR E IMPORTAR RESPALDO (100% LIBRE DE BLOQUEOS)
+   SECCIÓN: EXPORTAR E IMPORTAR RESPALDO
    ============================================================ */
 function generarObjetoRespaldo() {
   return new Promise((resolve, reject) => {
@@ -932,7 +1015,6 @@ function generarObjetoRespaldo() {
   });
 }
 
-// 1. Mostrar texto de respaldo en pantalla para copiar fácilmente
 document.getElementById('btn-generar-texto-backup').addEventListener('click', async () => {
   try {
     const data = await generarObjetoRespaldo();
@@ -942,8 +1024,6 @@ document.getElementById('btn-generar-texto-backup').addEventListener('click', as
 
     txtArea.value = jsonStr;
     contenedor.classList.remove('hidden');
-
-    // Desplazar suavemente hasta el texto generado
     contenedor.scrollIntoView({ behavior: 'smooth' });
   } catch (err) {
     console.error(err);
@@ -951,7 +1031,6 @@ document.getElementById('btn-generar-texto-backup').addEventListener('click', as
   }
 });
 
-// Botón para seleccionar todo el texto de una vez
 document.getElementById('btn-seleccionar-todo').addEventListener('click', () => {
   const txtArea = document.getElementById('txt-backup-generado');
   txtArea.focus();
@@ -960,14 +1039,12 @@ document.getElementById('btn-seleccionar-todo').addEventListener('click', () => 
   alert('Texto seleccionado. Mantén presionado y toca "Copiar" para guardarlo en la app Notas.');
 });
 
-// 2. Descargar como archivo sin trabar Safari
 document.getElementById('btn-descargar-archivo').addEventListener('click', async () => {
   try {
     const data = await generarObjetoRespaldo();
     const jsonStr = JSON.stringify(data, null, 2);
     const fileName = `coffeebreak_backup_${new Date().toISOString().split('T')[0]}.json`;
 
-    // data: URI en lugar de blob: para evitar que Safari abra pantalla negra
     const encodedData = 'data:application/json;charset=utf-8,' + encodeURIComponent(jsonStr);
     const link = document.createElement('a');
     link.setAttribute('href', encodedData);
@@ -982,7 +1059,6 @@ document.getElementById('btn-descargar-archivo').addEventListener('click', async
   }
 });
 
-// Lógica de inserción sin confirmaciones bloqueantes
 function procesarEInsertarDatos(data) {
   if (!data || (!data.alimentos && !data.recetas && !data.diario)) {
     alert('El contenido no corresponde a un respaldo válido de Coffee Break.');
@@ -1019,7 +1095,6 @@ function procesarEInsertarDatos(data) {
   };
 }
 
-// 3. Restaurar pegando texto (El método más fiable en iOS)
 document.getElementById('btn-restaurar-texto').addEventListener('click', () => {
   const txt = document.getElementById('txt-importar-manual').value.trim();
   if (!txt) return alert('Pega el texto del respaldo primero.');
@@ -1034,7 +1109,6 @@ document.getElementById('btn-restaurar-texto').addEventListener('click', () => {
   }
 });
 
-// 4. Restaurar desde archivo .json
 document.getElementById('input-importar-backup').addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (!file) return;
@@ -1054,7 +1128,7 @@ document.getElementById('input-importar-backup').addEventListener('change', (e) 
   reader.readAsText(file);
 });
 
-// 4. ARRANQUE
+// 5. ARRANQUE
 window.addEventListener('DOMContentLoaded', () => {
   activarPestanas();
   initDB();

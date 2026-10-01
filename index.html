@@ -274,8 +274,9 @@
           <label for="sug-modo">Tipo de sugerencias:</label>
           <select id="sug-modo">
             <option value="individuales">Alimentos / Recetas individuales</option>
-            <option value="combinaciones">Combinaciones habituales con sentido (Pares de alimentos)</option>
-            <option value="todos">Mostrar ambos</option>
+            <option value="combinaciones">Combinaciones proporcionales (Pares de recetas)</option>
+            <option value="densidad">Cascada por densidad calórica (Mayor densidad primero en porción pequeña)</option>
+            <option value="todos">Mostrar todas las modalidades</option>
           </select>
         </div>
 
@@ -285,7 +286,7 @@
       </div>
     </section>
 
-    <!-- TAB 6: RESPALDO (SIN BLOQUEOS EN SAFARI / IOS) -->
+    <!-- TAB 6: RESPALDO -->
     <section id="tab-backup" class="tab-content">
       <div class="card">
         <h2>Copia de Seguridad y Portabilidad</h2>
@@ -293,7 +294,6 @@
           Genera el texto de respaldo para guardarlo en la app <strong>Notas</strong> de tu iPhone o descárgalo como archivo.
         </p>
 
-        <!-- SECCIÓN EXPORTAR -->
         <button id="btn-generar-texto-backup" class="btn-primary" style="margin-bottom: 0.6rem;">
           📄 Ver y Copiar Texto de Respaldo
         </button>
@@ -310,7 +310,6 @@
           📥 Descargar como Archivo .json
         </button>
 
-        <!-- SECCIÓN RESTAURAR -->
         <div style="border-top: 1px solid var(--border); padding-top: 1.2rem;">
           <h3>Restaurar Datos</h3>
           <p class="nota-filtro" style="margin-bottom: 0.6rem;">
