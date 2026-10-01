@@ -8,34 +8,21 @@
   <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#1e1e24">
   <link rel="apple-touch-icon" href="./icon.jpg">
-  <style>
-    /* Protección directa para que el logo nunca se desborde */
-    .app-icon {
-      width: 44px !important;
-      height: 44px !important;
-      max-width: 44px !important;
-      max-height: 44px !important;
-      object-fit: cover !important;
-      border-radius: 10px !important;
-      flex-shrink: 0 !important;
-      display: inline-block !important;
-    }
-  </style>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 </head>
 <body>
   <header>
-    <div class="header-container" style="display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; padding: 0.5rem 1rem;">
-      <div class="logo-box" style="display: flex; align-items: center; gap: 0.6rem;">
-        <img src="./icon.jpg" alt="Logo" class="app-icon" style="width: 44px; height: 44px; object-fit: cover; border-radius: 10px;">
+    <div class="header-container">
+      <div class="logo-box">
+        <img src="./icon.jpg" alt="Logo" class="app-icon">
         <div>
-          <h1 style="margin: 0; font-size: 1.2rem; line-height: 1.2;">Coffee Break</h1>
-          <span class="subtitle" style="font-size: 0.75rem; color: var(--text-muted, #8e8e93);">Food Metrics & Precision Kitchen</span>
+          <h1>Coffee Break</h1>
+          <span class="subtitle">Food Metrics</span>
         </div>
       </div>
       <div class="date-picker-box">
-        <label for="diario-fecha" style="font-size: 0.8rem;">Fecha:</label>
-        <input type="date" id="diario-fecha" style="font-size: 0.85rem; padding: 0.3rem;">
+        <label for="diario-fecha">Fecha:</label>
+        <input type="date" id="diario-fecha">
       </div>
     </div>
 
@@ -78,7 +65,7 @@
       </div>
 
       <div style="display: flex; justify-content: flex-end; margin-bottom: 1rem;">
-        <button id="btn-nueva-categoria" class="btn-secondary">+ Nueva Categoría de Comida</button>
+        <button id="btn-nueva-categoria" class="btn-secondary">+ Nueva Categoría</button>
       </div>
 
       <div id="contenedor-categorias"></div>
@@ -88,7 +75,7 @@
           <h3 id="modal-diario-titulo">Agregar al Diario</h3>
           <div class="form-group" style="margin-top: 1rem;">
             <label>Filtrar alimento o receta:</label>
-            <input type="text" id="diario-buscador" placeholder="Escribe para buscar...">
+            <input type="text" id="diario-buscador" placeholder="Buscar...">
           </div>
           <div class="form-group">
             <label>Seleccionar elemento:</label>
@@ -111,7 +98,7 @@
       <div class="card">
         <h3>✨ Chef IA con Gemini</h3>
         <p style="color: var(--text-muted); font-size: 0.9rem;">
-          Crea recetas coherentes usando exclusivamente los alimentos de tu base de datos mediante tu proxy seguro.
+          Crea recetas coherentes usando exclusivamente los alimentos de tu base de datos.
         </p>
 
         <div style="display: flex; flex-direction: column; gap: 0.8rem; margin-top: 1rem;">
@@ -129,14 +116,18 @@
           </div>
 
           <div>
-            <label><strong>Tipo de comida / Momento:</strong></label>
+            <label><strong>Tipo de comida:</strong></label>
             <select id="ai-tipo-comida">
-              <option value="Almuerzo o plato de fondo salado">Almuerzo o plato de fondo</option>
-              <option value="Desayuno nutritivo">Desayuno nutritivo</option>
-              <option value="Once o cena ligera">Once o cena ligera</option>
-              <option value="Snack o colación dulce">Snack o colación dulce</option>
-              <option value="Snack salado o merienda rápida">Snack salado / merienda</option>
-              <option value="Postre saludable">Postre saludable</option>
+              <option value="Desayuno dulce">Desayuno dulce</option>
+              <option value="Desayuno salado">Desayuno salado</option>
+              <option value="Almuerzo salado">Almuerzo salado</option>
+              <option value="Almuerzo dulce">Almuerzo dulce</option>
+              <option value="Once/Cena salada">Once/Cena salada</option>
+              <option value="Once/Cena dulce">Once/Cena dulce</option>
+              <option value="Snack dulce">Snack dulce</option>
+              <option value="Snack salado">Snack salado</option>
+              <option value="Postre dulce">Postre dulce</option>
+              <option value="Postre salado">Postre salado</option>
             </select>
           </div>
 
@@ -147,18 +138,18 @@
             </label>
             <div id="ai-contenedor-urgente" class="hidden" style="margin-top: 0.6rem; display: flex; flex-direction: column; gap: 0.5rem;">
               <select id="ai-select-ingrediente-urgente">
-                <option value="">-- Selecciona qué alimento debes gastar --</option>
+                <option value="">-- Selecciona alimento --</option>
               </select>
               <div style="display: flex; align-items: center; gap: 0.5rem;">
-                <input type="number" id="ai-gramos-urgente" placeholder="Gramos exactos a gastar (ej: 80)" min="1" step="1">
+                <input type="number" id="ai-gramos-urgente" placeholder="Gramos a gastar (ej: 80)" min="1" step="1">
                 <span style="font-size: 0.85rem; color: var(--text-muted);">g</span>
               </div>
             </div>
           </div>
 
           <div>
-            <label><strong>Antojo o preferencia especial (opcional):</strong></label>
-            <input type="text" id="ai-antojo-extra" placeholder="Ej: textura crocante, sin calentar, alto en fibra...">
+            <label><strong>Preferencia o antojo (opcional):</strong></label>
+            <input type="text" id="ai-antojo-extra" placeholder="Ej: crocante, caliente, sin horno...">
           </div>
 
           <button id="btn-generar-receta-ia" class="btn-primary" style="background: #6366f1; border-color: #4f46e5; margin-top: 0.5rem;">
@@ -206,25 +197,25 @@
       <div class="card" style="margin-top: 1.5rem;">
         <h3>🧪 Mezclador Libre de Ingredientes</h3>
         <p style="color: var(--text-muted); font-size: 0.9rem;">
-          Selecciona varios alimentos y calcula 4 estrategias de pesos exactos para cuadrar tus calorías.
+          Calcula 4 estrategias de pesos exactos entre varios alimentos seleccionados.
         </p>
 
         <div style="display: flex; flex-direction: column; gap: 0.8rem; margin-top: 1rem;">
           <div>
-            <label><strong>Objetivo de calorías para la mezcla:</strong></label>
+            <label><strong>Objetivo de calorías:</strong></label>
             <select id="mezclador-tipo-objetivo">
-              <option value="restante">Usar Kcal restantes del día</option>
+              <option value="restante">Kcal restantes del día</option>
               <option value="manual">Fijar Kcal personalizadas</option>
             </select>
           </div>
 
           <div id="contenedor-kcal-manual" class="hidden">
-            <label>Kcal objetivo para la mezcla:</label>
+            <label>Kcal objetivo:</label>
             <input type="number" id="mezclador-kcal-manual" placeholder="Ej: 350" min="10" step="10">
           </div>
 
           <div>
-            <label>Filtrar alimentos disponibles:</label>
+            <label>Filtrar alimentos:</label>
             <input type="text" id="mezclador-filtro" placeholder="Buscar ingrediente...">
           </div>
 
@@ -234,9 +225,9 @@
           </div>
 
           <div>
-            <label><strong>Alimentos seleccionados (<span id="mezclador-contador-items">0</span>):</strong></label>
+            <label><strong>Seleccionados (<span id="mezclador-contador-items">0</span>):</strong></label>
             <ul id="mezclador-lista-seleccionados" class="lista-simple" style="margin-top: 0.4rem;">
-              <li style="color: var(--text-muted);">Ningún alimento seleccionado (elige al menos 2).</li>
+              <li style="color: var(--text-muted);">Ningún alimento seleccionado (mínimo 2).</li>
             </ul>
           </div>
 
@@ -248,18 +239,18 @@
         <div id="contenedor-sugerencias-personalizadas" style="margin-top: 1.5rem; display: flex; flex-direction: column; gap: 1rem;"></div>
       </div>
 
-      <!-- 3. SUGERENCIAS GLOBALES HABITUALES -->
+      <!-- 3. SUGERENCIAS GLOBALES -->
       <div class="card" style="margin-top: 1.5rem;">
         <h3>💡 Sugerencias Automáticas Globales</h3>
         <p style="color: var(--text-muted); font-size: 0.9rem;">
-          Calcula automáticamente los gramos exactos de cualquier alimento o preparación para cubrir las Kcal restantes de la jornada.
+          Calcula gramos exactos de alimentos o preparaciones para cubrir las Kcal restantes.
         </p>
 
         <div style="display: flex; gap: 0.5rem; margin: 1rem 0; flex-wrap: wrap;">
           <select id="sug-modo" style="flex: 1; min-width: 200px;">
             <option value="individuales">Solo alimentos individuales</option>
-            <option value="combinaciones">Combinaciones frecuentes de recetas</option>
-            <option value="todos">Todos los elementos guardados</option>
+            <option value="combinaciones">Combinaciones habituales</option>
+            <option value="todos">Todos los elementos</option>
           </select>
           <button id="btn-calcular-sugerencias" class="btn-primary">Ver Sugerencias</button>
         </div>
@@ -273,12 +264,12 @@
       <div class="card">
         <h3>Calculadora Rápida al Gramo</h3>
         <p style="color: var(--text-muted); font-size: 0.9rem;">
-          Calcula el aporte exacto de macronutrientes según el peso en la balanza de cocina.
+          Aporte nutricional según el peso pesado en balanza.
         </p>
 
         <div class="form-group" style="margin-top: 1rem;">
           <label>Filtrar por nombre:</label>
-          <input type="text" id="calc-filtro-nombre" placeholder="Escribe para buscar...">
+          <input type="text" id="calc-filtro-nombre" placeholder="Buscar...">
         </div>
 
         <div class="form-group">
@@ -289,7 +280,7 @@
         </div>
 
         <div class="form-group">
-          <label>Gramos a consumir:</label>
+          <label>Gramos consumidos:</label>
           <input type="number" id="input-gramos" placeholder="Ej: 85" min="1" step="0.5">
         </div>
 
@@ -314,7 +305,7 @@
           </label>
           
           <div id="ocr-preview-container" class="hidden" style="margin-top: 1rem;">
-            <img id="img-preview" alt="Vista previa etiqueta" style="max-height: 180px; width: auto; border-radius: 8px; display: block; margin: 0 auto;">
+            <img id="img-preview" alt="Vista previa" style="max-height: 180px; width: auto; border-radius: 8px; display: block; margin: 0 auto;">
             <div id="ocr-status" style="font-size: 0.85rem; color: var(--primary); text-align: center; margin-top: 0.5rem; font-weight: bold;"></div>
             <pre id="ocr-raw-text" class="hidden"></pre>
           </div>
@@ -324,7 +315,7 @@
           <div class="form-row">
             <div class="form-group" style="flex: 2;">
               <label>Nombre del Alimento *:</label>
-              <input type="text" id="nombre" required placeholder="Ej: Avena Integral">
+              <input type="text" id="nombre" required placeholder="Ej: Avena">
             </div>
             <div class="form-group" style="flex: 1;">
               <label>Marca:</label>
@@ -384,14 +375,14 @@
             </div>
           </div>
 
-          <button type="submit" class="btn-primary" style="margin-top: 1.2rem; width: 100%;">Guardar Alimento en Catálogo</button>
+          <button type="submit" class="btn-primary" style="margin-top: 1.2rem; width: 100%;">Guardar Alimento</button>
         </form>
       </div>
 
       <div class="card" style="margin-top: 1.5rem;">
         <h3>Alimentos Guardados</h3>
         <div class="form-group" style="margin: 0.8rem 0;">
-          <input type="text" id="buscador-alimentos-guardados" placeholder="Buscar alimento en tu despensa...">
+          <input type="text" id="buscador-alimentos-guardados" placeholder="Buscar en despensa...">
         </div>
         <ul id="lista-alimentos" class="lista-items"></ul>
       </div>
@@ -402,12 +393,12 @@
       <div class="card">
         <h3 id="titulo-panel-receta">Crear Receta Compuesta</h3>
         <p style="color: var(--text-muted); font-size: 0.9rem;">
-          Suma ingredientes para obtener el peso total de la preparación y calcular automáticamente sus valores por 100g.
+          Combina ingredientes para calcular automáticamente sus valores por 100g.
         </p>
 
         <div class="form-group" style="margin-top: 1rem;">
-          <label>Nombre de la Receta / Preparación *:</label>
-          <input type="text" id="receta-nombre" placeholder="Ej: Porridge Proteico con Nueces">
+          <label>Nombre de la Receta *:</label>
+          <input type="text" id="receta-nombre" placeholder="Ej: Porridge Proteico">
         </div>
 
         <div style="background: rgba(120, 120, 128, 0.08); padding: 1rem; border-radius: 8px; margin: 1rem 0;">
@@ -446,7 +437,7 @@
       <div class="card" style="margin-top: 1.5rem;">
         <h3>Recetas Guardadas</h3>
         <div class="form-group" style="margin: 0.8rem 0;">
-          <input type="text" id="buscador-recetas-guardadas" placeholder="Buscar en tus recetas...">
+          <input type="text" id="buscador-recetas-guardadas" placeholder="Buscar recetas...">
         </div>
         <ul id="lista-recetas" class="lista-items"></ul>
       </div>
@@ -457,7 +448,7 @@
       <div class="card">
         <h3>Metas Nutricionales Diarias</h3>
         <p style="color: var(--text-muted); font-size: 0.9rem;">
-          Define tus requerimientos calóricos y de macronutrientes para el cálculo diario.
+          Define tus límites de calorías y macronutrientes diarios.
         </p>
 
         <form id="form-metas" style="margin-top: 1rem;">
@@ -478,7 +469,7 @@
             <input type="number" id="meta-grasas" required min="0" step="1">
           </div>
 
-          <button type="submit" class="btn-primary" style="width: 100%; margin-top: 1rem;">Actualizar Metas Diarias</button>
+          <button type="submit" class="btn-primary" style="width: 100%; margin-top: 1rem;">Actualizar Metas</button>
         </form>
       </div>
     </section>
@@ -488,39 +479,39 @@
       <div class="card">
         <h3>Exportar e Importar Respaldo</h3>
         <p style="color: var(--text-muted); font-size: 0.9rem;">
-          Guarda o transfiere tu base de datos completa de alimentos, recetas, diario y metas.
+          Guarda o transfiere tu base de datos completa.
         </p>
 
         <div style="display: flex; gap: 0.5rem; margin-top: 1rem; flex-wrap: wrap;">
-          <button id="btn-generar-texto-backup" class="btn-primary" style="flex: 1; min-width: 180px;">Ver y Copiar Texto de Respaldo</button>
-          <button id="btn-descargar-archivo" class="btn-secondary" style="flex: 1; min-width: 180px;">Descargar Archivo .JSON</button>
+          <button id="btn-generar-texto-backup" class="btn-primary" style="flex: 1; min-width: 180px;">Ver y Copiar Texto</button>
+          <button id="btn-descargar-archivo" class="btn-secondary" style="flex: 1; min-width: 180px;">Descargar .JSON</button>
         </div>
 
         <div id="contenedor-texto-exportado" class="hidden" style="margin-top: 1rem;">
-          <label>Copia todo este contenido para pegarlo en Notas:</label>
+          <label>Copia el código para guardarlo en Notas:</label>
           <textarea id="txt-backup-generado" rows="8" style="width: 100%; font-family: monospace; font-size: 0.8rem;" readonly></textarea>
-          <button id="btn-seleccionar-todo" class="btn-secondary" style="margin-top: 0.5rem; width: 100%;">Seleccionar Todo el Texto</button>
+          <button id="btn-seleccionar-todo" class="btn-secondary" style="margin-top: 0.5rem; width: 100%;">Seleccionar Todo</button>
         </div>
 
         <hr style="margin: 1.5rem 0; border: none; border-top: 1px solid var(--border);">
 
         <h4>Restaurar Datos</h4>
         <div class="form-group">
-          <label>Opción A: Pegar texto de respaldo:</label>
-          <textarea id="txt-importar-manual" rows="4" placeholder="Pega aquí el código JSON..."></textarea>
-          <button id="btn-restaurar-texto" class="btn-secondary" style="margin-top: 0.5rem; width: 100%;">Restaurar desde Texto Pegado</button>
+          <label>Pegar texto de respaldo:</label>
+          <textarea id="txt-importar-manual" rows="4" placeholder="Pega el JSON aquí..."></textarea>
+          <button id="btn-restaurar-texto" class="btn-secondary" style="margin-top: 0.5rem; width: 100%;">Restaurar Texto</button>
         </div>
 
         <div class="form-group" style="margin-top: 1rem;">
-          <label>Opción B: Subir archivo de respaldo (.json):</label>
+          <label>Subir archivo de respaldo (.json):</label>
           <input type="file" id="input-importar-backup" accept=".json">
         </div>
       </div>
     </section>
   </main>
 
-  <!-- MODAL PANTALLA COMPLETA: MODO COCINA (MANOS LIBRES CON VOZ) -->
-  <div id="modal-modo-cocina" class="hidden" style="position: fixed; inset: 0; background: var(--bg, #fff); z-index: 9999; padding: 1.5rem; display: flex; flex-direction: column; justify-content: space-between; overflow-y: auto;">
+  <!-- MODAL PANTALLA COMPLETA: MODO COCINA -->
+  <div id="modal-modo-cocina" class="hidden" style="position: fixed; inset: 0; background: var(--bg, #121217); z-index: 9999; padding: 1.5rem; display: flex; flex-direction: column; justify-content: space-between; overflow-y: auto;">
     <div>
       <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 0.8rem;">
         <span id="cocina-paso-contador" style="font-size: 1rem; font-weight: bold; color: var(--primary);">Paso 1 de 4</span>
