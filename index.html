@@ -306,15 +306,31 @@
       </div>
     </section>
 
-    <!-- TAB 5: SUGERENCIAS (CON MEZCLADOR PERSONALIZADO HASTA 4 ALIMENTOS) -->
+    <!-- TAB 5: SUGERENCIAS (CON MEZCLADOR PERSONALIZADO ILIMITADO Y KCAL A ELECCIÓN) -->
     <section id="tab-sugerencias" class="tab-content">
       
-      <!-- MEZCLADOR PERSONALIZADO A TU ELECCIÓN -->
+      <!-- MEZCLADOR PERSONALIZADO -->
       <div class="card" style="border: 1px solid var(--primary);">
-        <h2 style="color: var(--primary);">Mezclador Personalizado (2 a 4 Alimentos)</h2>
+        <h2 style="color: var(--primary);">Mezclador Personalizado (Sin Límite de Alimentos)</h2>
         <p class="nota-filtro" style="margin-bottom: 0.8rem;">
-          Elige manualmente los alimentos que quieres mezclar hoy para obtener las 4 estrategias de cuadre exacto de tus Kcal restantes.
+          Selecciona 2 o más alimentos de tu catálogo y define cuántas Kcal deseas completar para generar las 4 estrategias.
         </p>
+
+        <!-- Selector de objetivo de Kcal -->
+        <fieldset style="margin-bottom: 0.8rem;">
+          <legend>Objetivo Calórico de la Mezcla</legend>
+          <div class="form-group">
+            <label for="mezclador-tipo-objetivo">Calorías objetivo:</label>
+            <select id="mezclador-tipo-objetivo">
+              <option value="restantes">Completar Kcal restantes del día</option>
+              <option value="manual">Fijar Kcal personalizadas</option>
+            </select>
+          </div>
+          <div id="contenedor-kcal-manual" class="form-group hidden">
+            <label for="mezclador-kcal-manual">Kcal a consumir en esta preparación:</label>
+            <input type="number" id="mezclador-kcal-manual" placeholder="Ej: 450" min="20" step="any">
+          </div>
+        </fieldset>
 
         <div class="form-group">
           <input type="text" id="mezclador-filtro" placeholder="Filtrar alimentos disponibles...">
@@ -328,12 +344,12 @@
           </div>
         </div>
         <button type="button" id="btn-agregar-alimento-mezcla" class="btn-secondary" style="width: 100%; margin-bottom: 0.8rem;">
-          + Añadir a la selección (Máximo 4)
+          + Añadir a la selección
         </button>
 
-        <h3>Alimentos seleccionados para mezclar:</h3>
+        <h3>Alimentos seleccionados para mezclar (<span id="mezclador-contador-items">0</span>):</h3>
         <ul id="mezclador-lista-seleccionados" class="lista-items" style="margin-bottom: 0.8rem;">
-          <li style="color: var(--text-muted);">Ningún alimento seleccionado (elige entre 2 y 4).</li>
+          <li style="color: var(--text-muted);">Ningún alimento seleccionado (elige al menos 2).</li>
         </ul>
 
         <button type="button" id="btn-calcular-mezcla-personalizada" class="btn-primary" style="background-color: var(--primary);">
