@@ -381,39 +381,39 @@ function parsearTablaNutricionalRobusto(texto) {
 
   for (let i = 0; i < lineas.length; i++) {
     const l = lineas[i];
-    const lLow = l.toLowerCase();
+    const l整治 = l.toLowerCase();
 
-    if ((lLow.includes('energ') || lLow.includes('kcal') || lLow.includes('calor')) && valores.kcal === null) {
+    if ((l整治.includes('energ') || l整治.includes('kcal') || l整治.includes('calor')) && valores.kcal === null) {
       const nums = extraerNumerosConCoherencia(l, 'kcal');
       if (nums.length > 0) valores.kcal = nums.find(n => n >= 15) || nums[0];
-    } else if ((lLow.includes('prot') || lLow.includes('prat')) && valores.proteinas === null) {
+    } else if ((l整治.includes('prot') || l整治.includes('prat')) && valores.proteinas === null) {
       const nums = extraerNumerosConCoherencia(l, 'macro_comun');
       if (nums.length > 0) valores.proteinas = nums[0];
-    } else if ((lLow.includes('carb') || lLow.includes('h. de c') || lLow.includes('hidratos')) && valores.carbohidratos === null) {
+    } else if ((l整治.includes('carb') || l整治.includes('h. de c') || l整治.includes('hidratos')) && valores.carbohidratos === null) {
       const nums = extraerNumerosConCoherencia(l, 'carbos');
       if (nums.length > 0) valores.carbohidratos = nums[0];
-    } else if ((lLow.includes('grasa total') || lLow.includes('grasas totales') || lLow.includes('lipidos') || (lLow.includes('grasa') && !lLow.includes('sat') && !lLow.includes('mono') && !lLow.includes('trans'))) && valores.grasas === null) {
+    } else if ((l整治.includes('grasa total') || l整治.includes('grasas totales') || l整治.includes('lipidos') || (l整治.includes('grasa') && !l整治.includes('sat') && !l整治.includes('mono') && !l整治.includes('trans'))) && valores.grasas === null) {
       const nums = extraerNumerosConCoherencia(l, 'macro_comun');
       if (nums.length > 0) valores.grasas = nums[0];
-    } else if (lLow.includes('azuc') || lLow.includes('azúc')) {
+    } else if (l整治.includes('azuc') || l整治.includes('azúc')) {
       const nums = extraerNumerosConCoherencia(l, 'macro_comun');
       if (nums.length > 0 && valores.azucares === null) valores.azucares = nums[0];
-    } else if (lLow.includes('fibra')) {
+    } else if (l整治.includes('fibra')) {
       const nums = extraerNumerosConCoherencia(l, 'macro_comun');
       if (nums.length > 0 && valores.fibra === null) valores.fibra = nums[0];
-    } else if (lLow.includes('saturad') && valores.sat === null) {
+    } else if (l整治.includes('saturad') && valores.sat === null) {
       const nums = extraerNumerosConCoherencia(l, 'macro_comun');
       if (nums.length > 0) valores.sat = nums[0];
-    } else if (lLow.includes('monoinsat') && valores.mono === null) {
+    } else if (l整治.includes('monoinsat') && valores.mono === null) {
       const nums = extraerNumerosConCoherencia(l, 'macro_comun');
       if (nums.length > 0) valores.mono = nums[0];
-    } else if (lLow.includes('trans') && valores.trans === null) {
+    } else if (l整治.includes('trans') && valores.trans === null) {
       const nums = extraerNumerosConCoherencia(l, 'macro_comun');
       if (nums.length > 0) valores.trans = nums[0];
-    } else if (lLow.includes('sodio') && valores.sodio === null) {
+    } else if (l整治.includes('sodio') && valores.sodio === null) {
       const nums = extraerNumerosConCoherencia(l, 'kcal');
       if (nums.length > 0) valores.sodio = nums[0];
-    } else if (lLow.includes('colest') && valores.colesterol === null) {
+    } else if (l整治.includes('colest') && valores.colesterol === null) {
       const nums = extraerNumerosConCoherencia(l, 'kcal');
       if (nums.length > 0) valores.colesterol = nums[0];
     }
@@ -1023,13 +1023,21 @@ ${antojoExtra ? `4. Preferencias del usuario: "${antojoExtra}".` : ''}
       })
     });
 
+    const data = await resp.json();
+
     if (!resp.ok) {
-      throw new Error(`Error en el servidor de Cloudflare (${resp.status}).`);
+      if (resp.status === 429) {
+        throw new Error('Límite de solicitudes por minuto alcanzado. Espera 10-15 segundos y vuelve a presionar el botón.');
+      }
+      if (resp.status === 503) {
+        throw new Error('Los servidores de Google están con alta demanda en este instante. Intenta nuevamente en unos segundos.');
+      }
+      const detalleError = data?.error?.message || `Código ${resp.status}`;
+      throw new Error(`Aviso del Chef IA: ${detalleError}`);
     }
 
-    const data = await resp.json();
     const rawJson = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!rawJson) throw new Error('No se recibió respuesta válida del Chef IA.');
+    if (!rawJson) throw new Error('No se recibió contenido válido del Chef IA.');
 
     const recetaGenerada = JSON.parse(rawJson);
 
@@ -1105,7 +1113,7 @@ function renderizarRecetaIAEscalada(factor) {
   const infoPorcion = document.getElementById('ai-info-porcion');
   if (infoPorcion) {
     if (factor > 1) {
-      infoPorcion.textContent = `⚖️️ Servir por porción: ${(totPeso / factor).toFixed(0)}g en plato (${(totKcal / factor).toFixed(0)} kcal c/u)`;
+      infoPorcion.textContent = `⚖️ Servir por porción: ${(totPeso / factor).toFixed(0)}g en plato (${(totKcal / factor).toFixed(0)} kcal c/u)`;
     } else {
       infoPorcion.textContent = `⚖️ Peso total de la preparación: ${totPeso.toFixed(0)}g`;
     }
