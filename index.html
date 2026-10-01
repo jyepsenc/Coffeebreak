@@ -67,6 +67,29 @@
         </div>
       </div>
 
+      <!-- Modal flotante para agregar comida con buscador -->
+      <div id="modal-agregar-diario" class="card hidden" style="border: 2px solid var(--primary); margin-bottom: 1.2rem;">
+        <div class="section-row">
+          <h3 id="modal-diario-titulo">Agregar al Diario</h3>
+          <button type="button" class="btn-del" onclick="cerrarModalDiario()">Cerrar</button>
+        </div>
+        <div class="form-group" style="margin-top: 0.6rem;">
+          <label>Buscar alimento o receta:</label>
+          <input type="text" id="diario-buscador" placeholder="Escribe para filtrar...">
+        </div>
+        <div class="form-group">
+          <label>Selecciona elemento:</label>
+          <select id="diario-select-item" size="5" style="height: 120px;"></select>
+        </div>
+        <div class="form-group">
+          <label>Gramos consumidos:</label>
+          <input type="number" id="diario-input-gramos" placeholder="Ej: 150" min="1" step="any">
+        </div>
+        <button type="button" id="btn-confirmar-agregar-diario" class="btn-primary" style="background-color: var(--success);">
+          ✓ Guardar en Diario
+        </button>
+      </div>
+
       <div class="card">
         <div class="section-row">
           <h2>Comidas Registradas</h2>
@@ -105,8 +128,13 @@
         </div>
       </div>
 
+      <!-- Calculadora por Gramos con Buscador Predictivo -->
       <div class="card">
         <h2>Calculadora por Gramos</h2>
+        <div class="form-group">
+          <label for="calc-filtro-nombre">Buscar por nombre:</label>
+          <input type="text" id="calc-filtro-nombre" placeholder="Escribe para buscar...">
+        </div>
         <div class="form-group">
           <label for="select-alimento">Alimento o Receta:</label>
           <select id="select-alimento">
@@ -182,15 +210,20 @@
       </div>
 
       <div class="card">
-        <h2>Mis Alimentos Guardados</h2>
+        <div class="section-row">
+          <h2>Mis Alimentos Guardados</h2>
+        </div>
+        <div class="form-group">
+          <input type="text" id="buscador-alimentos-guardados" placeholder="Filtrar alimentos guardados...">
+        </div>
         <ul id="lista-alimentos" class="lista-items"></ul>
       </div>
     </section>
 
-    <!-- TAB 3: RECETAS COMPUESTAS -->
+    <!-- TAB 3: RECETAS COMPUESTAS (CREAR Y EDITAR) -->
     <section id="tab-recetas" class="tab-content">
       <div class="card">
-        <h2>Crear Receta Compuesta</h2>
+        <h2 id="titulo-panel-receta">Crear Receta Compuesta</h2>
         <div class="form-group">
           <label for="receta-nombre">Nombre de la Receta *</label>
           <input type="text" id="receta-nombre" placeholder="Ej: Porridge con Frutos Secos">
@@ -198,6 +231,9 @@
 
         <fieldset>
           <legend>Agregar Ingrediente</legend>
+          <div class="form-group">
+            <input type="text" id="receta-filtro-ingrediente" placeholder="Buscar ingrediente por nombre...">
+          </div>
           <div class="form-group">
             <select id="receta-select-alimento">
               <option value="">-- Elige un alimento base --</option>
@@ -214,7 +250,7 @@
           </div>
         </fieldset>
 
-        <h3>Ingredientes agregados:</h3>
+        <h3>Ingredientes de la receta:</h3>
         <ul id="receta-lista-ingredientes" class="lista-items" style="margin-bottom: 1rem;">
           <li style="color: var(--text-muted);">Sin ingredientes aún.</li>
         </ul>
@@ -225,11 +261,19 @@
           <small>Prot: <span id="receta-total-prot">0</span>g | Carbs: <span id="receta-total-carbs">0</span>g | Grasas: <span id="receta-total-grasas">0</span>g</small>
         </div>
 
-        <button type="button" id="btn-guardar-receta" class="btn-primary" style="margin-top: 1rem;">Guardar Receta</button>
+        <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+          <button type="button" id="btn-guardar-receta" class="btn-primary" style="flex: 2;">Guardar Receta</button>
+          <button type="button" id="btn-cancelar-edicion-receta" class="btn-secondary hidden" style="flex: 1;">Cancelar</button>
+        </div>
       </div>
 
       <div class="card">
-        <h2>Mis Recetas Guardadas</h2>
+        <div class="section-row">
+          <h2>Mis Recetas Guardadas</h2>
+        </div>
+        <div class="form-group">
+          <input type="text" id="buscador-recetas-guardadas" placeholder="Filtrar recetas...">
+        </div>
         <ul id="lista-recetas" class="lista-items"></ul>
       </div>
     </section>
@@ -262,26 +306,60 @@
       </div>
     </section>
 
-    <!-- TAB 5: SUGERENCIAS -->
+    <!-- TAB 5: SUGERENCIAS (CON MEZCLADOR PERSONALIZADO HASTA 4 ALIMENTOS) -->
     <section id="tab-sugerencias" class="tab-content">
+      
+      <!-- MEZCLADOR PERSONALIZADO A TU ELECCIÓN -->
+      <div class="card" style="border: 1px solid var(--primary);">
+        <h2 style="color: var(--primary);">Mezclador Personalizado (2 a 4 Alimentos)</h2>
+        <p class="nota-filtro" style="margin-bottom: 0.8rem;">
+          Elige manualmente los alimentos que quieres mezclar hoy para obtener las 4 estrategias de cuadre exacto de tus Kcal restantes.
+        </p>
+
+        <div class="form-group">
+          <input type="text" id="mezclador-filtro" placeholder="Filtrar alimentos disponibles...">
+        </div>
+
+        <div class="grid-form" style="margin-bottom: 0.6rem;">
+          <div style="grid-column: span 2;">
+            <select id="mezclador-select-alimento">
+              <option value="">-- Selecciona alimento para la mezcla --</option>
+            </select>
+          </div>
+        </div>
+        <button type="button" id="btn-agregar-alimento-mezcla" class="btn-secondary" style="width: 100%; margin-bottom: 0.8rem;">
+          + Añadir a la selección (Máximo 4)
+        </button>
+
+        <h3>Alimentos seleccionados para mezclar:</h3>
+        <ul id="mezclador-lista-seleccionados" class="lista-items" style="margin-bottom: 0.8rem;">
+          <li style="color: var(--text-muted);">Ningún alimento seleccionado (elige entre 2 y 4).</li>
+        </ul>
+
+        <button type="button" id="btn-calcular-mezcla-personalizada" class="btn-primary" style="background-color: var(--primary);">
+          ✨ Generar las 4 Estrategias de Mezcla
+        </button>
+
+        <div id="contenedor-sugerencias-personalizadas" style="margin-top: 1rem;"></div>
+      </div>
+
+      <!-- SUGERENCIAS AUTOMÁTICAS HABITUALES -->
       <div class="card">
-        <h2>Sugerencias de Cuadre Exacto</h2>
+        <h2>Sugerencias Automáticas Globales</h2>
         <p class="nota-filtro">
-          <strong>Regla:</strong> Techo absoluto en Kcal restantes. Si una opción se pasa en algún macro, se resalta en <span style="color: var(--danger); font-weight: bold;">rojo</span>.
+          <strong>Regla:</strong> Techo absoluto en Kcal restantes con prioridad en Proteínas. Si un macro se sobrepasa, se resalta en <span style="color: var(--danger); font-weight: bold;">rojo</span>.
         </p>
 
         <div class="form-group" style="margin-top: 0.8rem;">
-          <label for="sug-modo">Tipo de sugerencias:</label>
+          <label for="sug-modo">Modalidad de sugerencia:</label>
           <select id="sug-modo">
             <option value="individuales">Alimentos / Recetas individuales</option>
-            <option value="combinaciones">Combinaciones proporcionales (Pares de recetas)</option>
-            <option value="densidad">Cascada por densidad calórica (Mayor densidad primero en porción pequeña)</option>
-            <option value="todos">Mostrar todas las modalidades</option>
+            <option value="combinaciones">Combinaciones habituales (Pares de recetas)</option>
+            <option value="todos">Mostrar ambas</option>
           </select>
         </div>
 
-        <button id="btn-calcular-sugerencias" class="btn-primary">Generar Sugerencias</button>
-
+        <button id="btn-calcular-sugerencias" class="btn-secondary" style="width: 100%;">Generar Sugerencias Automáticas</button>
         <div id="contenedor-sugerencias" style="margin-top: 1.2rem;"></div>
       </div>
     </section>

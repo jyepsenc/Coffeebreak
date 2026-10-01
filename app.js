@@ -8,7 +8,12 @@ let recetasCache = [];
 let categoriasCache = ['Desayuno', 'Almuerzo', 'Once/Cena', 'Snacks'];
 let metasActuales = { kcal: 2000, proteinas: 140, carbohidratos: 200, grasas: 65 };
 let fechaSeleccionada = new Date().toISOString().split('T')[0];
+
+// Estados de edición y selección
 let recetaBorrador = [];
+let recetaEditandoId = null; // null = creando, número = editando receta existente
+let alimentosMezclador = []; // Lista de IDs seleccionados para el mezclador (hasta 4)
+let categoriaModalDiario = null;
 
 // 1. REGISTRO DE SERVICE WORKER PARA PWA
 if ('serviceWorker' in navigator) {
@@ -93,18 +98,135 @@ function cargarTodo() {
   tx.objectStore('alimentos').getAll().onsuccess = (e) => {
     alimentosCache = e.target.result || [];
     actualizarVistasAlimentos();
+    actualizarSelectoresGlobales();
   };
 
   tx.objectStore('recetas').getAll().onsuccess = (e) => {
     recetasCache = e.target.result || [];
     actualizarVistasRecetas();
+    actualizarSelectoresGlobales();
   };
 
   tx.oncomplete = () => cargarDiario();
 }
 
 /* ============================================================
-   SECCIÓN: OCR ROBUSTO Y NORMALIZACIÓN DE MACROS
+   SECCIÓN: FILTROS Y SELECTORES INTELIGENTES (BUSCADORES)
+   ============================================================ */
+function actualizarSelectoresGlobales() {
+  poblarSelectCalculadora();
+  poblarSelectRecetaIngredientes();
+  poblarSelectMezclador();
+}
+
+// 1. Buscador en la Calculadora
+const calcFiltro = document.getElementById('calc-filtro-nombre');
+if (calcFiltro) {
+  calcFiltro.addEventListener('input', () => poblarSelectCalculadora(calcFiltro.value.trim().toLowerCase()));
+}
+
+function poblarSelectCalculadora(filtro = '') {
+  const select = document.getElementById('select-alimento');
+  if (!select) return;
+  select.innerHTML = '<option value="">-- Elige un elemento --</option>';
+
+  const alisFiltrados = alimentosCache.filter(a => a.nombre.toLowerCase().includes(filtro));
+  if (alisFiltrados.length > 0) {
+    const gAli = document.createElement('optgroup');
+    gAli.label = 'Alimentos Individuales';
+    alisFiltrados.forEach(a => gAli.appendChild(new Option(`${a.nombre} (${a.kcal} kcal/100g)`, `ali_${a.id}`)));
+    select.appendChild(gAli);
+  }
+
+  const recsFiltradas = recetasCache.filter(r => r.nombre.toLowerCase().includes(filtro));
+  if (recsFiltradas.length > 0) {
+    const gRec = document.createElement('optgroup');
+    gRec.label = 'Recetas Compuestas';
+    recsFiltradas.forEach(r => gRec.appendChild(new Option(`${r.nombre} [Receta] (${r.kcalPor100g.toFixed(1)} kcal/100g)`, `rec_${r.id}`)));
+    select.appendChild(gRec);
+  }
+}
+
+// 2. Buscador en Ingredientes de Recetas
+const recetaFiltro = document.getElementById('receta-filtro-ingrediente');
+if (recetaFiltro) {
+  recetaFiltro.addEventListener('input', () => poblarSelectRecetaIngredientes(recetaFiltro.value.trim().toLowerCase()));
+}
+
+function poblarSelectRecetaIngredientes(filtro = '') {
+  const select = document.getElementById('receta-select-alimento');
+  if (!select) return;
+  select.innerHTML = '<option value="">-- Elige un alimento base --</option>';
+
+  const alisFiltrados = alimentosCache.filter(a => a.nombre.toLowerCase().includes(filtro));
+  alisFiltrados.forEach(a => select.appendChild(new Option(`${a.nombre} (${a.kcal} kcal/100g)`, a.id)));
+}
+
+// 3. Buscador en Alimentos Guardados (Lista)
+const buscadorAlisGuardados = document.getElementById('buscador-alimentos-guardados');
+if (buscadorAlisGuardados) {
+  buscadorAlisGuardados.addEventListener('input', () => renderizarListaAlimentosGuardados(buscadorAlisGuardados.value.trim().toLowerCase()));
+}
+
+function renderizarListaAlimentosGuardados(filtro = '') {
+  const lista = document.getElementById('lista-alimentos');
+  if (!lista) return;
+  lista.innerHTML = '';
+
+  const filtrados = alimentosCache.filter(a => a.nombre.toLowerCase().includes(filtro) || (a.marca && a.marca.toLowerCase().includes(filtro)));
+  if (filtrados.length === 0) {
+    lista.innerHTML = '<li style="color: var(--text-muted);">No se encontraron alimentos.</li>';
+    return;
+  }
+
+  filtrados.forEach(a => {
+    const li = document.createElement('li');
+    li.innerHTML = `
+      <div>
+        <strong>${a.nombre}</strong> ${a.marca ? `(${a.marca})` : ''}<br>
+        <small style="color: var(--text-muted);">${a.kcal} kcal | P: ${a.proteinas}g | C: ${a.carbohidratos}g | G: ${a.grasas}g</small>
+      </div>
+      <button class="btn-del" onclick="eliminarAlimento(${a.id})">Borrar</button>
+    `;
+    lista.appendChild(li);
+  });
+}
+
+// 4. Buscador en Recetas Guardadas (Lista)
+const buscadorRecsGuardadas = document.getElementById('buscador-recetas-guardadas');
+if (buscadorRecsGuardadas) {
+  buscadorRecsGuardadas.addEventListener('input', () => renderizarListaRecetasGuardadas(buscadorRecsGuardadas.value.trim().toLowerCase()));
+}
+
+function renderizarListaRecetasGuardadas(filtro = '') {
+  const lista = document.getElementById('lista-recetas');
+  if (!lista) return;
+  lista.innerHTML = '';
+
+  const filtradas = recetasCache.filter(r => r.nombre.toLowerCase().includes(filtro));
+  if (filtradas.length === 0) {
+    lista.innerHTML = '<li style="color: var(--text-muted);">No se encontraron recetas.</li>';
+    return;
+  }
+
+  filtradas.forEach(r => {
+    const li = document.createElement('li');
+    li.innerHTML = `
+      <div>
+        <strong>${r.nombre}</strong><br>
+        <small style="color: var(--text-muted);">${r.kcalPor100g.toFixed(1)} kcal/100g (Total: ${r.pesoTotal}g - ${r.kcalTotal.toFixed(0)} kcal)</small>
+      </div>
+      <div style="display: flex; gap: 0.4rem;">
+        <button class="btn-secondary" onclick="cargarRecetaParaEditar(${r.id})">Editar</button>
+        <button class="btn-del" onclick="eliminarReceta(${r.id})">Borrar</button>
+      </div>
+    `;
+    lista.appendChild(li);
+  });
+}
+
+/* ============================================================
+   SECCIÓN: OCR Y NORMALIZACIÓN DE FOTOS
    ============================================================ */
 const inputFoto = document.getElementById('input-foto-tabla');
 const imgPreview = document.getElementById('img-preview');
@@ -160,12 +282,12 @@ if (inputFoto) {
 
       imgPreview.onload = async () => {
         if (typeof Tesseract === 'undefined') {
-          alert('Se requiere conexión a internet la primera vez para descargar el diccionario OCR.');
+          alert('Se requiere internet la primera vez para cargar el motor OCR.');
           return;
         }
 
         try {
-          ocrStatus.textContent = 'Optimizando resolución y contraste...';
+          ocrStatus.textContent = 'Normalizando imagen...';
           const imagenOptimizada = optimizarFotoCelular(imgPreview);
 
           ocrStatus.textContent = 'Analizando tabla...';
@@ -184,7 +306,7 @@ if (inputFoto) {
           const texto = result.data.text;
           if (ocrRawText) ocrRawText.textContent = texto;
 
-          ocrStatus.textContent = '✓ Lectura lista. Comprueba los campos en el formulario antes de guardar:';
+          ocrStatus.textContent = '✓ Lectura lista. Comprueba los campos abajo:';
           parsearTablaNutricionalRobusto(texto);
 
         } catch (err) {
@@ -213,33 +335,19 @@ function parsearTablaNutricionalRobusto(texto) {
       if (isNaN(n)) return null;
 
       if (tipo === 'carbos') {
-        if (n >= 100 && n <= 999) {
-          n = n / 10;
-        }
+        if (n >= 100 && n <= 999) n = n / 10;
       } else if (tipo === 'macro_comun') {
-        if (n >= 100 && n <= 999) {
-          n = n / 100;
-        } else if (n > 50 && n < 100) {
-          n = n / 10;
-        }
+        if (n >= 100 && n <= 999) n = n / 100;
+        else if (n > 50 && n < 100) n = n / 10;
       }
       return n;
     }).filter(n => n !== null);
   };
 
   const valores = {
-    kcal: null,
-    proteinas: null,
-    carbohidratos: null,
-    grasas: null,
-    azucares: null,
-    fibra: null,
-    sat: null,
-    mono: null,
-    poli: null,
-    trans: null,
-    sodio: null,
-    colesterol: null
+    kcal: null, proteinas: null, carbohidratos: null, grasas: null,
+    azucares: null, fibra: null, sat: null, mono: null, poli: null,
+    trans: null, sodio: null, colesterol: null
   };
 
   for (let i = 0; i < lineas.length; i++) {
@@ -249,44 +357,34 @@ function parsearTablaNutricionalRobusto(texto) {
     if ((lLow.includes('energ') || lLow.includes('kcal') || lLow.includes('calor')) && valores.kcal === null) {
       const nums = extraerNumerosConCoherencia(l, 'kcal');
       if (nums.length > 0) valores.kcal = nums.find(n => n >= 15) || nums[0];
-    }
-    else if ((lLow.includes('prot') || lLow.includes('prat')) && valores.proteinas === null) {
+    } else if ((lLow.includes('prot') || lLow.includes('prat')) && valores.proteinas === null) {
       const nums = extraerNumerosConCoherencia(l, 'macro_comun');
       if (nums.length > 0) valores.proteinas = nums[0];
-    }
-    else if ((lLow.includes('carb') || lLow.includes('h. de c') || lLow.includes('hidratos') || lLow.includes('disponibles')) && valores.carbohidratos === null) {
+    } else if ((lLow.includes('carb') || lLow.includes('h. de c') || lLow.includes('hidratos')) && valores.carbohidratos === null) {
       const nums = extraerNumerosConCoherencia(l, 'carbos');
       if (nums.length > 0) valores.carbohidratos = nums[0];
-    }
-    else if ((lLow.includes('grasa total') || lLow.includes('grasas totales') || lLow.includes('lipidos') || lLow.includes('lípidos') || (lLow.includes('grasa') && !lLow.includes('sat') && !lLow.includes('mono') && !lLow.includes('trans'))) && valores.grasas === null) {
+    } else if ((lLow.includes('grasa total') || lLow.includes('grasas totales') || lLow.includes('lipidos') || (lLow.includes('grasa') && !lLow.includes('sat') && !lLow.includes('mono') && !lLow.includes('trans'))) && valores.grasas === null) {
       const nums = extraerNumerosConCoherencia(l, 'macro_comun');
       if (nums.length > 0) valores.grasas = nums[0];
-    }
-    else if (lLow.includes('azuc') || lLow.includes('azúc')) {
+    } else if (lLow.includes('azuc') || lLow.includes('azúc')) {
       const nums = extraerNumerosConCoherencia(l, 'macro_comun');
       if (nums.length > 0 && valores.azucares === null) valores.azucares = nums[0];
-    }
-    else if (lLow.includes('fibra')) {
+    } else if (lLow.includes('fibra')) {
       const nums = extraerNumerosConCoherencia(l, 'macro_comun');
       if (nums.length > 0 && valores.fibra === null) valores.fibra = nums[0];
-    }
-    else if (lLow.includes('saturad') && valores.sat === null) {
+    } else if (lLow.includes('saturad') && valores.sat === null) {
       const nums = extraerNumerosConCoherencia(l, 'macro_comun');
       if (nums.length > 0) valores.sat = nums[0];
-    }
-    else if (lLow.includes('monoinsat') && valores.mono === null) {
+    } else if (lLow.includes('monoinsat') && valores.mono === null) {
       const nums = extraerNumerosConCoherencia(l, 'macro_comun');
       if (nums.length > 0) valores.mono = nums[0];
-    }
-    else if (lLow.includes('trans') && valores.trans === null) {
+    } else if (lLow.includes('trans') && valores.trans === null) {
       const nums = extraerNumerosConCoherencia(l, 'macro_comun');
       if (nums.length > 0) valores.trans = nums[0];
-    }
-    else if (lLow.includes('sodio') && valores.sodio === null) {
+    } else if (lLow.includes('sodio') && valores.sodio === null) {
       const nums = extraerNumerosConCoherencia(l, 'kcal');
       if (nums.length > 0) valores.sodio = nums[0];
-    }
-    else if ((lLow.includes('colest') || lLow.includes('cholest')) && valores.colesterol === null) {
+    } else if (lLow.includes('colest') && valores.colesterol === null) {
       const nums = extraerNumerosConCoherencia(l, 'kcal');
       if (nums.length > 0) valores.colesterol = nums[0];
     }
@@ -316,51 +414,7 @@ function parsearTablaNutricionalRobusto(texto) {
    SECCIÓN: ALIMENTOS Y CALCULADORA DINÁMICA
    ============================================================ */
 function actualizarVistasAlimentos() {
-  const select = document.getElementById('select-alimento');
-  const selectReceta = document.getElementById('receta-select-alimento');
-  const lista = document.getElementById('lista-alimentos');
-
-  if (select) select.innerHTML = '<option value="">-- Elige un elemento --</option>';
-  if (selectReceta) selectReceta.innerHTML = '<option value="">-- Elige un alimento base --</option>';
-  if (lista) lista.innerHTML = '';
-
-  if (select && alimentosCache.length > 0) {
-    const grupoAlimentos = document.createElement('optgroup');
-    grupoAlimentos.label = 'Alimentos Individuales';
-    alimentosCache.forEach(a => {
-      grupoAlimentos.appendChild(new Option(`${a.nombre} (${a.kcal} kcal/100g)`, `ali_${a.id}`));
-    });
-    select.appendChild(grupoAlimentos);
-  }
-
-  if (selectReceta) {
-    alimentosCache.forEach(a => {
-      selectReceta.appendChild(new Option(`${a.nombre} (${a.kcal} kcal/100g)`, a.id));
-    });
-  }
-
-  if (lista) {
-    alimentosCache.forEach(a => {
-      const li = document.createElement('li');
-      li.innerHTML = `
-        <div>
-          <strong>${a.nombre}</strong> ${a.marca ? `(${a.marca})` : ''}<br>
-          <small style="color: var(--text-muted);">${a.kcal} kcal | P: ${a.proteinas}g | C: ${a.carbohidratos}g | G: ${a.grasas}g</small>
-        </div>
-        <button class="btn-del" onclick="eliminarAlimento(${a.id})">Borrar</button>
-      `;
-      lista.appendChild(li);
-    });
-  }
-
-  if (select && recetasCache.length > 0) {
-    const grupoRecetas = document.createElement('optgroup');
-    grupoRecetas.label = 'Recetas Compuestas';
-    recetasCache.forEach(r => {
-      grupoRecetas.appendChild(new Option(`${r.nombre} [Receta] (${r.kcalPor100g.toFixed(1)} kcal/100g)`, `rec_${r.id}`));
-    });
-    select.appendChild(grupoRecetas);
-  }
+  renderizarListaAlimentosGuardados();
 }
 
 document.getElementById('form-alimento').addEventListener('submit', (e) => {
@@ -398,10 +452,12 @@ function recargarAlimentos() {
   db.transaction(['alimentos'], 'readonly').objectStore('alimentos').getAll().onsuccess = (e) => {
     alimentosCache = e.target.result || [];
     actualizarVistasAlimentos();
+    actualizarSelectoresGlobales();
   };
 }
 
 window.eliminarAlimento = function(id) {
+  if (!confirm('¿Eliminar este alimento?')) return;
   const tx = db.transaction(['alimentos'], 'readwrite');
   tx.objectStore('alimentos').delete(id);
   tx.oncomplete = () => recargarAlimentos();
@@ -448,13 +504,13 @@ document.getElementById('select-alimento').addEventListener('change', calcularGr
 document.getElementById('input-gramos').addEventListener('input', calcularGramos);
 
 /* ============================================================
-   SECCIÓN: RECETAS COMPUESTAS
+   SECCIÓN: RECETAS COMPUESTAS (CREAR Y EDITAR PREPARACIONES)
    ============================================================ */
 document.getElementById('btn-agregar-ingrediente').addEventListener('click', () => {
   const aliId = parseInt(document.getElementById('receta-select-alimento').value, 10);
   const gramos = parseFloat(document.getElementById('receta-gramos-ingrediente').value) || 0;
 
-  if (!aliId || gramos <= 0) return;
+  if (!aliId || gramos <= 0) return alert('Selecciona un ingrediente y escribe los gramos.');
 
   const ali = alimentosCache.find(a => a.id === aliId);
   if (!ali) return;
@@ -479,19 +535,21 @@ function actualizarVistaBorradorReceta() {
 
   recetaBorrador.forEach((ing, idx) => {
     const ali = alimentosCache.find(a => a.id === ing.alimentoId);
-    const f = ing.gramos / 100;
-    totKcal += ali.kcal * f;
-    totProt += ali.proteinas * f;
-    totCarbs += ali.carbohidratos * f;
-    totGrasas += ali.grasas * f;
-    totPeso += ing.gramos;
+    if (ali) {
+      const f = ing.gramos / 100;
+      totKcal += ali.kcal * f;
+      totProt += ali.proteinas * f;
+      totCarbs += ali.carbohidratos * f;
+      totGrasas += ali.grasas * f;
+      totPeso += ing.gramos;
 
-    const li = document.createElement('li');
-    li.innerHTML = `
-      <span>${ing.nombre} - ${ing.gramos}g (${(ali.kcal * f).toFixed(1)} kcal)</span>
-      <button class="btn-del" onclick="eliminarIngredienteReceta(${idx})">x</button>
-    `;
-    lista.appendChild(li);
+      const li = document.createElement('li');
+      li.innerHTML = `
+        <span>${ing.nombre} - ${ing.gramos}g (${(ali.kcal * f).toFixed(1)} kcal)</span>
+        <button class="btn-del" onclick="eliminarIngredienteReceta(${idx})">x</button>
+      `;
+      lista.appendChild(li);
+    }
   });
 
   document.getElementById('receta-total-kcal').textContent = totKcal.toFixed(1);
@@ -507,6 +565,37 @@ window.eliminarIngredienteReceta = function(idx) {
   actualizarVistaBorradorReceta();
 };
 
+// Cargar receta existente en el formulario para editarla
+window.cargarRecetaParaEditar = function(id) {
+  const rec = recetasCache.find(r => r.id === id);
+  if (!rec) return;
+
+  recetaEditandoId = rec.id;
+  document.getElementById('titulo-panel-receta').textContent = `Editando: ${rec.nombre}`;
+  document.getElementById('receta-nombre').value = rec.nombre;
+  document.getElementById('btn-guardar-receta').textContent = 'Guardar Cambios de la Receta';
+  document.getElementById('btn-cancelar-edicion-receta').classList.remove('hidden');
+
+  recetaBorrador = JSON.parse(JSON.stringify(rec.ingredientes || []));
+  actualizarVistaBorradorReceta();
+
+  document.getElementById('tab-recetas').scrollIntoView({ behavior: 'smooth' });
+};
+
+document.getElementById('btn-cancelar-edicion-receta').addEventListener('click', () => {
+  resetearFormularioReceta();
+});
+
+function resetearFormularioReceta() {
+  recetaEditandoId = null;
+  recetaBorrador = [];
+  document.getElementById('titulo-panel-receta').textContent = 'Crear Receta Compuesta';
+  document.getElementById('receta-nombre').value = '';
+  document.getElementById('btn-guardar-receta').textContent = 'Guardar Receta';
+  document.getElementById('btn-cancelar-edicion-receta').classList.add('hidden');
+  actualizarVistaBorradorReceta();
+}
+
 document.getElementById('btn-guardar-receta').addEventListener('click', () => {
   const nombre = document.getElementById('receta-nombre').value.trim();
   if (!nombre || recetaBorrador.length === 0) {
@@ -517,31 +606,40 @@ document.getElementById('btn-guardar-receta').addEventListener('click', () => {
   let totKcal = 0, totProt = 0, totCarbs = 0, totGrasas = 0, totPeso = 0;
   recetaBorrador.forEach(ing => {
     const ali = alimentosCache.find(a => a.id === ing.alimentoId);
-    const f = ing.gramos / 100;
-    totKcal += ali.kcal * f;
-    totProt += ali.proteinas * f;
-    totCarbs += ali.carbohidratos * f;
-    totGrasas += ali.grasas * f;
-    totPeso += ing.gramos;
+    if (ali) {
+      const f = ing.gramos / 100;
+      totKcal += ali.kcal * f;
+      totProt += ali.proteinas * f;
+      totCarbs += ali.carbohidratos * f;
+      totGrasas += ali.grasas * f;
+      totPeso += ing.gramos;
+    }
   });
 
-  const nuevaReceta = {
+  const objReceta = {
     nombre: nombre,
     ingredientes: [...recetaBorrador],
     pesoTotal: totPeso,
     kcalTotal: totKcal,
-    kcalPor100g: (totKcal / totPeso) * 100,
-    protPor100g: (totProt / totPeso) * 100,
-    carbsPor100g: (totCarbs / totPeso) * 100,
-    grasasPor100g: (totGrasas / totPeso) * 100
+    kcalPor100g: totPeso > 0 ? (totKcal / totPeso) * 100 : 0,
+    protPor100g: totPeso > 0 ? (totProt / totPeso) * 100 : 0,
+    carbsPor100g: totPeso > 0 ? (totCarbs / totPeso) * 100 : 0,
+    grasasPor100g: totPeso > 0 ? (totGrasas / totPeso) * 100 : 0
   };
 
   const tx = db.transaction(['recetas'], 'readwrite');
-  tx.objectStore('recetas').add(nuevaReceta);
+  const store = tx.objectStore('recetas');
+
+  if (recetaEditandoId !== null) {
+    objReceta.id = recetaEditandoId;
+    store.put(objReceta);
+  } else {
+    store.add(objReceta);
+  }
+
   tx.oncomplete = () => {
-    recetaBorrador = [];
-    document.getElementById('receta-nombre').value = '';
-    actualizarVistaBorradorReceta();
+    alert(`¡Receta "${objReceta.nombre}" guardada con éxito!`);
+    resetearFormularioReceta();
     recargarRecetas();
   };
 });
@@ -550,28 +648,16 @@ function recargarRecetas() {
   db.transaction(['recetas'], 'readonly').objectStore('recetas').getAll().onsuccess = (e) => {
     recetasCache = e.target.result || [];
     actualizarVistasRecetas();
-    actualizarVistasAlimentos();
+    actualizarSelectoresGlobales();
   };
 }
 
 function actualizarVistasRecetas() {
-  const lista = document.getElementById('lista-recetas');
-  if (!lista) return;
-  lista.innerHTML = '';
-  recetasCache.forEach(r => {
-    const li = document.createElement('li');
-    li.innerHTML = `
-      <div>
-        <strong>${r.nombre}</strong><br>
-        <small style="color: var(--text-muted);">${r.kcalPor100g.toFixed(1)} kcal/100g (Total: ${r.pesoTotal}g - ${r.kcalTotal.toFixed(0)} kcal)</small>
-      </div>
-      <button class="btn-del" onclick="eliminarReceta(${r.id})">Borrar</button>
-    `;
-    lista.appendChild(li);
-  });
+  renderizarListaRecetasGuardadas();
 }
 
 window.eliminarReceta = function(id) {
+  if (!confirm('¿Eliminar esta preparación?')) return;
   const tx = db.transaction(['recetas'], 'readwrite');
   tx.objectStore('recetas').delete(id);
   tx.oncomplete = () => recargarRecetas();
@@ -612,7 +698,7 @@ document.getElementById('form-metas').addEventListener('submit', (e) => {
 });
 
 /* ============================================================
-   SECCIÓN: DIARIO CON TOTALES DE KCAL Y MACROS POR CATEGORÍA
+   SECCIÓN: DIARIO NUTRICIONAL (CON MODAL Y BUSCADOR PREDICTIVO)
    ============================================================ */
 document.getElementById('diario-fecha').addEventListener('change', (e) => {
   fechaSeleccionada = e.target.value;
@@ -652,10 +738,7 @@ function renderizarEstructuraDiario(entradas) {
     box.className = 'categoria-box';
 
     const entradasCat = entradas.filter(e => e.categoria === cat);
-    let catKcal = 0;
-    let catProt = 0;
-    let catCarbs = 0;
-    let catGrasas = 0;
+    let catKcal = 0, catProt = 0, catCarbs = 0, catGrasas = 0;
 
     let htmlEntradas = '';
     entradasCat.forEach(item => {
@@ -691,7 +774,7 @@ function renderizarEstructuraDiario(entradas) {
             <span>G: ${catGrasas.toFixed(1)}g</span>
           </div>
         </div>
-        <button class="btn-secondary" onclick="abrirAgregarComida('${cat}')">+ Agregar</button>
+        <button class="btn-secondary" onclick="abrirModalAgregarDiario('${cat}')">+ Agregar</button>
       </div>
       <div class="categoria-items">
         ${htmlEntradas || '<small style="color:var(--text-muted)">Sin registros</small>'}
@@ -714,24 +797,16 @@ function actualizarDashboard(kCons, pCons, cCons, gCons) {
 
   const elemKcalRest = document.getElementById('dash-kcal-restante');
   elemKcalRest.textContent = kRest.toFixed(0);
-  if (kRest < 0) {
-    elemKcalRest.classList.add('alerta-exceso');
-  } else {
-    elemKcalRest.classList.remove('alerta-exceso');
-  }
+  if (kRest < 0) elemKcalRest.classList.add('alerta-exceso');
+  else elemKcalRest.classList.remove('alerta-exceso');
 
   const setMacro = (idCol, idRest, idSub, rest, cons, meta) => {
     const rElem = document.getElementById(idRest);
     const sElem = document.getElementById(idSub);
-
     rElem.textContent = `${rest.toFixed(1)}g`;
     sElem.textContent = `${cons.toFixed(1)} / ${meta}g`;
-
-    if (rest < 0) {
-      rElem.classList.add('alerta-exceso');
-    } else {
-      rElem.classList.remove('alerta-exceso');
-    }
+    if (rest < 0) rElem.classList.add('alerta-exceso');
+    else rElem.classList.remove('alerta-exceso');
   };
 
   setMacro('col-prot', 'dash-prot-restante', 'dash-prot-sub', pRest, pCons, metasActuales.proteinas);
@@ -741,48 +816,78 @@ function actualizarDashboard(kCons, pCons, cCons, gCons) {
   window.restantesGlobales = { kcal: kRest, proteinas: pRest, carbohidratos: cRest, grasas: gRest };
 }
 
-window.abrirAgregarComida = function(cat) {
-  const origen = prompt(`¿Agregar a ${cat}?\nEscribe el número:\n1. Alimento guardado\n2. Receta`);
-  if (!origen) return;
-
-  if (origen === '1') {
-    if (alimentosCache.length === 0) return alert('No hay alimentos guardados. Ve a la pestaña Alimentos.');
-    let listado = alimentosCache.map((a, i) => `${i + 1}. ${a.nombre}`).join('\n');
-    let sel = prompt(`Selecciona el número del alimento:\n${listado}`);
-    let idx = parseInt(sel, 10) - 1;
-    if (alimentosCache[idx]) {
-      let g = parseFloat(prompt(`Gramos consumidos de ${alimentosCache[idx].nombre}:`));
-      if (g > 0) guardarEnDiario(cat, alimentosCache[idx], g, false);
-    }
-  } else if (origen === '2') {
-    if (recetasCache.length === 0) return alert('No hay recetas guardadas. Ve a la pestaña Recetas.');
-    let listado = recetasCache.map((r, i) => `${i + 1}. ${r.nombre}`).join('\n');
-    let sel = prompt(`Selecciona el número de la receta:\n${listado}`);
-    let idx = parseInt(sel, 10) - 1;
-    if (recetasCache[idx]) {
-      let g = parseFloat(prompt(`Gramos consumidos de ${recetasCache[idx].nombre}:`));
-      if (g > 0) guardarEnDiario(cat, recetasCache[idx], g, true);
-    }
-  }
+// Modal predictivo para agregar comidas
+window.abrirModalAgregarDiario = function(cat) {
+  categoriaModalDiario = cat;
+  const modal = document.getElementById('modal-agregar-diario');
+  document.getElementById('modal-diario-titulo').textContent = `Agregar comida a ${cat}`;
+  document.getElementById('diario-buscador').value = '';
+  document.getElementById('diario-input-gramos').value = '';
+  poblarSelectModalDiario('');
+  modal.classList.remove('hidden');
+  modal.scrollIntoView({ behavior: 'smooth' });
 };
 
-function guardarEnDiario(categoria, item, gramos, esReceta) {
+window.cerrarModalDiario = function() {
+  document.getElementById('modal-agregar-diario').classList.add('hidden');
+  categoriaModalDiario = null;
+};
+
+const diarioBuscador = document.getElementById('diario-buscador');
+if (diarioBuscador) {
+  diarioBuscador.addEventListener('input', () => poblarSelectModalDiario(diarioBuscador.value.trim().toLowerCase()));
+}
+
+function poblarSelectModalDiario(filtro = '') {
+  const sel = document.getElementById('diario-select-item');
+  sel.innerHTML = '';
+
+  const alis = alimentosCache.filter(a => a.nombre.toLowerCase().includes(filtro));
+  alis.forEach(a => sel.appendChild(new Option(`${a.nombre} (${a.kcal} kcal/100g)`, `ali_${a.id}`)));
+
+  const recs = recetasCache.filter(r => r.nombre.toLowerCase().includes(filtro));
+  recs.forEach(r => sel.appendChild(new Option(`${r.nombre} [Receta] (${r.kcalPor100g.toFixed(1)} kcal/100g)`, `rec_${r.id}`)));
+}
+
+document.getElementById('btn-confirmar-agregar-diario').addEventListener('click', () => {
+  const itemVal = document.getElementById('diario-select-item').value;
+  const gramos = parseFloat(document.getElementById('diario-input-gramos').value) || 0;
+
+  if (!itemVal || gramos <= 0) return alert('Selecciona un elemento y escribe los gramos consumidos.');
+
+  let nombre = '', kcal100 = 0, p100 = 0, c100 = 0, g100 = 0;
+
+  if (itemVal.startsWith('ali_')) {
+    const id = parseInt(itemVal.replace('ali_', ''), 10);
+    const a = alimentosCache.find(x => x.id === id);
+    if (!a) return;
+    nombre = a.nombre; kcal100 = a.kcal; p100 = a.proteinas; c100 = a.carbohidratos; g100 = a.grasas;
+  } else if (itemVal.startsWith('rec_')) {
+    const id = parseInt(itemVal.replace('rec_', ''), 10);
+    const r = recetasCache.find(x => x.id === id);
+    if (!r) return;
+    nombre = r.nombre; kcal100 = r.kcalPor100g; p100 = r.protPor100g; c100 = r.carbsPor100g; g100 = r.grasasPor100g;
+  }
+
   const f = gramos / 100;
   const entrada = {
     fecha: fechaSeleccionada,
-    categoria: categoria,
-    nombre: item.nombre,
+    categoria: categoriaModalDiario,
+    nombre: nombre,
     gramos: gramos,
-    kcal: (esReceta ? item.kcalPor100g : item.kcal) * f,
-    proteinas: (esReceta ? item.protPor100g : item.proteinas) * f,
-    carbohidratos: (esReceta ? item.carbsPor100g : item.carbohidratos) * f,
-    grasas: (esReceta ? item.grasasPor100g : item.grasas) * f
+    kcal: kcal100 * f,
+    proteinas: p100 * f,
+    carbohidratos: c100 * f,
+    grasas: g100 * f
   };
 
   const tx = db.transaction(['diario'], 'readwrite');
   tx.objectStore('diario').add(entrada);
-  tx.oncomplete = () => cargarDiario();
-}
+  tx.oncomplete = () => {
+    cerrarModalDiario();
+    cargarDiario();
+  };
+});
 
 window.eliminarEntradaDiario = function(id) {
   const tx = db.transaction(['diario'], 'readwrite');
@@ -791,7 +896,233 @@ window.eliminarEntradaDiario = function(id) {
 };
 
 /* ============================================================
-   SECCIÓN: SUGERENCIAS INTELIGENTES (CON CASCADA POR DENSIDAD)
+   SECCIÓN: MEZCLADOR PERSONALIZADO (HASTA 4 ALIMENTOS CON 4 ESTRATEGIAS)
+   ============================================================ */
+const mezcladorFiltro = document.getElementById('mezclador-filtro');
+if (mezcladorFiltro) {
+  mezcladorFiltro.addEventListener('input', () => poblarSelectMezclador(mezcladorFiltro.value.trim().toLowerCase()));
+}
+
+function poblarSelectMezclador(filtro = '') {
+  const sel = document.getElementById('mezclador-select-alimento');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">-- Selecciona alimento para la mezcla --</option>';
+
+  const alis = alimentosCache.filter(a => a.nombre.toLowerCase().includes(filtro));
+  alis.forEach(a => sel.appendChild(new Option(`${a.nombre} (${a.kcal} kcal/100g | P:${a.proteinas}g)`, a.id)));
+}
+
+document.getElementById('btn-agregar-alimento-mezcla').addEventListener('click', () => {
+  const sel = document.getElementById('mezclador-select-alimento');
+  const id = parseInt(sel.value, 10);
+  if (!id) return;
+
+  if (alimentosMezclador.includes(id)) return alert('Este alimento ya está en la selección.');
+  if (alimentosMezclador.length >= 4) return alert('Puedes seleccionar un máximo de 4 alimentos.');
+
+  alimentosMezclador.push(id);
+  renderizarSeleccionMezclador();
+});
+
+function renderizarSeleccionMezclador() {
+  const lista = document.getElementById('mezclador-lista-seleccionados');
+  if (!lista) return;
+
+  if (alimentosMezclador.length === 0) {
+    lista.innerHTML = '<li style="color: var(--text-muted);">Ningún alimento seleccionado (elige entre 2 y 4).</li>';
+    return;
+  }
+
+  lista.innerHTML = '';
+  alimentosMezclador.forEach((id, idx) => {
+    const a = alimentosCache.find(x => x.id === id);
+    if (a) {
+      const li = document.createElement('li');
+      li.innerHTML = `
+        <span><strong>${a.nombre}</strong> (${a.kcal} kcal/100g - Prot: ${a.proteinas}g)</span>
+        <button class="btn-del" onclick="quitarDeMezclador(${idx})">x</button>
+      `;
+      lista.appendChild(li);
+    }
+  });
+}
+
+window.quitarDeMezclador = function(idx) {
+  alimentosMezclador.splice(idx, 1);
+  renderizarSeleccionMezclador();
+};
+
+document.getElementById('btn-calcular-mezcla-personalizada').addEventListener('click', () => {
+  const rest = window.restantesGlobales || { kcal: 0, proteinas: 0, carbohidratos: 0, grasas: 0 };
+  const cont = document.getElementById('contenedor-sugerencias-personalizadas');
+  cont.innerHTML = '';
+
+  if (alimentosMezclador.length < 2) {
+    cont.innerHTML = '<p style="color: var(--danger); font-weight: bold;">Debes seleccionar al menos 2 alimentos (máximo 4) para crear la mezcla.</p>';
+    return;
+  }
+
+  if (rest.kcal <= 0) {
+    cont.innerHTML = '<p style="color: var(--text-muted);">Ya has alcanzado o superado tu meta de Kcal del día.</p>';
+    return;
+  }
+
+  const items = alimentosMezclador.map(id => alimentosCache.find(a => a.id === id)).filter(Boolean);
+  if (items.some(i => i.kcal <= 0)) {
+    cont.innerHTML = '<p style="color: var(--danger);">Todos los alimentos seleccionados deben tener Kcal mayores a 0.</p>';
+    return;
+  }
+
+  const totalKcal = rest.kcal;
+  const num = items.length;
+  const estrategias = [];
+
+  // Función utilitaria para evaluar macros de una mezcla
+  const calcularTotalesMezcla = (pesos) => {
+    let p = 0, c = 0, g = 0;
+    pesos.forEach((gr, idx) => {
+      const f = gr / 100;
+      p += items[idx].proteinas * f;
+      c += items[idx].carbohidratos * f;
+      g += items[idx].grasas * f;
+    });
+    return { p, c, g };
+  };
+
+  // -------------------------------------------------------------
+  // ESTRATEGIA 1: Mayor Kcal Dominante (Más Kcal aportadas por los más densos)
+  // -------------------------------------------------------------
+  const ordenDesc = [...items].sort((a, b) => b.kcal - a.kcal);
+  // Ponderador calórico decreciente: al más denso se le asigna mayor cuota de Kcal
+  let pesosE1 = [];
+  let sumaPesos = 0;
+  for (let i = 0; i < num; i++) sumaPesos += (num - i);
+  
+  items.forEach(item => {
+    // ranking de densidad
+    const rank = ordenDesc.findIndex(x => x.id === item.id);
+    const porcionKcal = totalKcal * ((num - rank) / sumaPesos);
+    const gr = Number(((porcionKcal / item.kcal) * 100).toFixed(1));
+    pesosE1.push(gr);
+  });
+  const totE1 = calcularTotalesMezcla(pesosE1);
+
+  estrategias.push({
+    titulo: 'Estrategia 1: Alimento con más Kcal Dominante',
+    tipo: 'Mayor aporte del alimento más denso',
+    desglose: items.map((it, idx) => `• <strong>${it.nombre}</strong>: <span class="sug-gramos">${pesosE1[idx]} g</span> (${((it.kcal * pesosE1[idx])/100).toFixed(0)} kcal)`).join('<br>'),
+    totales: totE1
+  });
+
+  // -------------------------------------------------------------
+  // ESTRATEGIA 2: Balance Parejo (Cada alimento aporta la misma cantidad de Kcal)
+  // -------------------------------------------------------------
+  let pesosE2 = [];
+  const kcalPorItem = totalKcal / num;
+  items.forEach(item => {
+    const gr = Number(((kcalPorItem / item.kcal) * 100).toFixed(1));
+    pesosE2.push(gr);
+  });
+  const totE2 = calcularTotalesMezcla(pesosE2);
+
+  estrategias.push({
+    titulo: 'Estrategia 2: Balance Parejo',
+    tipo: 'Aporte calórico equitativo entre todos',
+    desglose: items.map((it, idx) => `• <strong>${it.nombre}</strong>: <span class="sug-gramos">${pesosE2[idx]} g</span> (${((it.kcal * pesosE2[idx])/100).toFixed(0)} kcal)`).join('<br>'),
+    totales: totE2
+  });
+
+  // -------------------------------------------------------------
+  // ESTRATEGIA 3: Menor Kcal Dominante (Más Kcal aportadas por los menos densos -> Mayor Volumen)
+  // -------------------------------------------------------------
+  let pesosE3 = [];
+  items.forEach(item => {
+    const rank = ordenDesc.findIndex(x => x.id === item.id);
+    // inverso: el menos denso recibe la cuota mayor
+    const porcionKcal = totalKcal * ((rank + 1) / sumaPesos);
+    const gr = Number(((porcionKcal / item.kcal) * 100).toFixed(1));
+    pesosE3.push(gr);
+  });
+  const totE3 = calcularTotalesMezcla(pesosE3);
+
+  estrategias.push({
+    titulo: 'Estrategia 3: Alimento con menor Kcal Dominante (Mayor Volumen)',
+    tipo: 'Mayor porción del alimento más ligero para saciedad',
+    desglose: items.map((it, idx) => `• <strong>${it.nombre}</strong>: <span class="sug-gramos">${pesosE3[idx]} g</span> (${((it.kcal * pesosE3[idx])/100).toFixed(0)} kcal)`).join('<br>'),
+    totales: totE3
+  });
+
+  // -------------------------------------------------------------
+  // ESTRATEGIA 4: Cascada por Densidad (Mayor densidad en porción muy pequeña primero)
+  // -------------------------------------------------------------
+  let kcalRestanteCascada = totalKcal;
+  let pesosE4Map = {};
+
+  ordenDesc.forEach((item, idx) => {
+    const esUltimo = (idx === ordenDesc.length - 1);
+    let gr = 0;
+
+    if (!esUltimo) {
+      // Porción pequeña controlada (10 a 20g según densidad)
+      const tope = (totalKcal * 0.25) / (item.kcal / 100);
+      const sugerido = Math.min(15, Math.max(5, tope));
+      const aportado = (item.kcal * sugerido) / 100;
+
+      if (aportado >= kcalRestanteCascada) {
+        gr = Number(((kcalRestanteCascada / item.kcal) * 100).toFixed(1));
+      } else {
+        gr = Number(sugerido.toFixed(1));
+      }
+      kcalRestanteCascada -= (item.kcal * gr) / 100;
+    } else {
+      // El último (menos denso) ajusta todo el remanente
+      gr = Number(((kcalRestanteCascada / item.kcal) * 100).toFixed(1));
+    }
+    pesosE4Map[item.id] = gr;
+  });
+
+  const pesosE4 = items.map(it => pesosE4Map[it.id]);
+  const totE4 = calcularTotalesMezcla(pesosE4);
+
+  estrategias.push({
+    titulo: 'Estrategia 4: Cascada por Densidad Decreciente',
+    tipo: 'Ingrediente más denso en porción mínima; remanente al más ligero',
+    desglose: items.map((it, idx) => `• <strong>${it.nombre}</strong> (${it.kcal} kcal/100g): <span class="sug-gramos">${pesosE4[idx]} g</span> (${((it.kcal * pesosE4[idx])/100).toFixed(0)} kcal)`).join('<br>'),
+    totales: totE4
+  });
+
+  // Renderizar las 4 tarjetas
+  estrategias.forEach(est => {
+    const card = document.createElement('div');
+    card.className = 'sugerencia-card';
+
+    const excesoP = est.totales.p > rest.proteinas + 0.5 ? (est.totales.p - rest.proteinas) : 0;
+    const excesoC = est.totales.c > rest.carbohidratos + 0.5 ? (est.totales.c - rest.carbohidratos) : 0;
+    const excesoG = est.totales.g > rest.grasas + 0.5 ? (est.totales.g - rest.grasas) : 0;
+
+    let alertas = [];
+    if (excesoP > 0) alertas.push(`<span class="alerta-exceso">+${excesoP.toFixed(1)}g Prot</span>`);
+    if (excesoC > 0) alertas.push(`<span class="alerta-exceso">+${excesoC.toFixed(1)}g Carbs</span>`);
+    if (excesoG > 0) alertas.push(`<span class="alerta-exceso">+${excesoG.toFixed(1)}g Grasas</span>`);
+
+    card.innerHTML = `
+      <h4>${est.titulo}</h4>
+      <small style="color: var(--primary); font-weight: 600;">${est.tipo}</small>
+      <div style="margin: 0.5rem 0; line-height: 1.4;">${est.desglose}</div>
+      <div style="font-size:0.85rem; margin-top:0.4rem; border-top: 1px solid var(--border); padding-top: 0.4rem;">
+        Aporte total: <strong>${totalKcal.toFixed(0)} kcal</strong> | 
+        <span class="${excesoP > 0 ? 'alerta-exceso' : ''}">P: ${est.totales.p.toFixed(1)}g</span> | 
+        <span class="${excesoC > 0 ? 'alerta-exceso' : ''}">C: ${est.totales.c.toFixed(1)}g</span> | 
+        <span class="${excesoG > 0 ? 'alerta-exceso' : ''}">G: ${est.totales.g.toFixed(1)}g</span>
+      </div>
+      ${alertas.length > 0 ? `<div style="font-size:0.75rem; margin-top:0.4rem;">Exceso advertido: ${alertas.join(' | ')}</div>` : '<div style="font-size:0.75rem; color:var(--success); margin-top:0.4rem;">✓ Respeta tus límites de macros diarios</div>'}
+    `;
+    cont.appendChild(card);
+  });
+});
+
+/* ============================================================
+   SECCIÓN: SUGERENCIAS AUTOMÁTICAS HABITUALES
    ============================================================ */
 document.getElementById('btn-calcular-sugerencias').addEventListener('click', () => {
   const rest = window.restantesGlobales || { kcal: 0, proteinas: 0, carbohidratos: 0, grasas: 0 };
@@ -806,7 +1137,7 @@ document.getElementById('btn-calcular-sugerencias').addEventListener('click', ()
   const modo = document.getElementById('sug-modo').value;
   const sugerencias = [];
 
-  // 1. INDIVIDUALES
+  // Individuales
   if (modo === 'individuales' || modo === 'todos') {
     const catalogo = [
       ...alimentosCache.map(a => ({ nombre: a.nombre, kcal100: a.kcal, p100: a.proteinas, c100: a.carbohidratos, g100: a.grasas, tipo: 'Alimento' })),
@@ -837,7 +1168,7 @@ document.getElementById('btn-calcular-sugerencias').addEventListener('click', ()
     });
   }
 
-  // 2. COMBINACIONES HABITUALES (Pares de recetas manteniendo su ratio original)
+  // Combinaciones
   if (modo === 'combinaciones' || modo === 'todos') {
     recetasCache.forEach(rec => {
       if (rec.ingredientes && rec.ingredientes.length >= 2) {
@@ -879,89 +1210,8 @@ document.getElementById('btn-calcular-sugerencias').addEventListener('click', ()
     });
   }
 
-  // 3. CASCADA POR DENSIDAD CALÓRICA (Mayor densidad Kcal/100g en cantidad pequeña)
-  if (modo === 'densidad' || modo === 'todos') {
-    recetasCache.forEach(rec => {
-      if (rec.ingredientes && rec.ingredientes.length >= 2) {
-        // Obtener todos los ingredientes de la receta con sus Kcal/100g
-        const listaIng = rec.ingredientes.map(i => {
-          const ali = alimentosCache.find(a => a.id === i.alimentoId);
-          return ali ? { ...ali, baseGramosOriginal: i.gramos } : null;
-        }).filter(Boolean);
-
-        if (listaIng.length >= 2) {
-          // Ordenar de MAYOR a MENOR densidad calórica (Kcal por 100g/ml)
-          listaIng.sort((a, b) => b.kcal - a.kcal);
-
-          let kcalPorCubrir = rest.kcal;
-          let desgloseItems = [];
-          let pTotal = 0, cTotal = 0, gTotal = 0;
-          let posible = true;
-
-          // Asignar cantidad pequeña/controlada a los más densos (máx 15g a 25g o según Kcal)
-          // El último ingrediente (menos denso) ajustará exactamente el remanente calórico
-          for (let i = 0; i < listaIng.length; i++) {
-            const ing = listaIng[i];
-            const esUltimo = (i === listaIng.length - 1);
-
-            let gramosCalculados = 0;
-
-            if (!esUltimo) {
-              // Porción pequeña sugerida para los densos: 15 gramos o un tope calórico del 25% del remanente
-              const porcionPequena = Math.min(15, (kcalPorCubrir * 0.25) / (ing.kcal / 100));
-              gramosCalculados = Math.max(5, Number(porcionPequena.toFixed(1)));
-              const aporteKcal = (ing.kcal * gramosCalculados) / 100;
-
-              if (aporteKcal >= kcalPorCubrir) {
-                // Si incluso una porción pequeña se pasa del remanente, recalculamos al límite
-                gramosCalculados = Number(((kcalPorCubrir / ing.kcal) * 100).toFixed(1));
-              }
-
-              kcalPorCubrir -= (ing.kcal * gramosCalculados) / 100;
-            } else {
-              // El último ingrediente absorbe todo el remanente exacto de Kcal
-              if (ing.kcal <= 0) {
-                posible = false;
-                break;
-              }
-              gramosCalculados = Number(((kcalPorCubrir / ing.kcal) * 100).toFixed(1));
-              kcalPorCubrir = 0;
-            }
-
-            if (gramosCalculados <= 0) {
-              posible = false;
-              break;
-            }
-
-            const f = gramosCalculados / 100;
-            pTotal += ing.proteinas * f;
-            cTotal += ing.carbohidratos * f;
-            gTotal += ing.grasas * f;
-
-            desgloseItems.push(`• <strong>${ing.nombre}</strong> (${ing.kcal} kcal/100g): <span class="sug-gramos">${gramosCalculados} g</span>`);
-          }
-
-          if (posible && desgloseItems.length > 0) {
-            sugerencias.push({
-              titulo: `Cascada por Densidad (${rec.nombre})`,
-              tipo: `Mayor densidad calórica primero`,
-              descripcion: desgloseItems.join('<br>'),
-              kcal: rest.kcal,
-              p: pTotal,
-              c: cTotal,
-              g: gTotal,
-              excesoP: pTotal > rest.proteinas + 0.5 ? pTotal - rest.proteinas : 0,
-              excesoC: cTotal > rest.carbohidratos + 0.5 ? cTotal - rest.carbohidratos : 0,
-              excesoG: gTotal > rest.grasas + 0.5 ? gTotal - rest.grasas : 0
-            });
-          }
-        }
-      }
-    });
-  }
-
   if (sugerencias.length === 0) {
-    cont.innerHTML = '<p style="color:var(--text-muted)">No hay sugerencias disponibles para la modalidad seleccionada.</p>';
+    cont.innerHTML = '<p style="color:var(--text-muted)">No hay sugerencias disponibles.</p>';
     return;
   }
 
@@ -990,14 +1240,14 @@ document.getElementById('btn-calcular-sugerencias').addEventListener('click', ()
 });
 
 /* ============================================================
-   SECCIÓN: EXPORTAR E IMPORTAR RESPALDO
+   SECCIÓN: EXPORTAR E IMPORTAR RESPALDO (JSON)
    ============================================================ */
 function generarObjetoRespaldo() {
   return new Promise((resolve, reject) => {
     if (!db) return reject('Base de datos no inicializada');
     const tx = db.transaction(['alimentos', 'recetas', 'diario', 'config'], 'readonly');
     const respaldo = {
-      versionApp: 'CoffeeBreak_v2',
+      versionApp: 'CoffeeBreak_v3',
       fechaExportacion: new Date().toISOString(),
       alimentos: [],
       recetas: [],
@@ -1036,7 +1286,7 @@ document.getElementById('btn-seleccionar-todo').addEventListener('click', () => 
   txtArea.focus();
   txtArea.select();
   txtArea.setSelectionRange(0, 999999);
-  alert('Texto seleccionado. Mantén presionado y toca "Copiar" para guardarlo en la app Notas.');
+  alert('Texto seleccionado. Mantén presionado y toca "Copiar" para guardarlo en Notas.');
 });
 
 document.getElementById('btn-descargar-archivo').addEventListener('click', async () => {
@@ -1105,7 +1355,7 @@ document.getElementById('btn-restaurar-texto').addEventListener('click', () => {
     document.getElementById('txt-importar-manual').value = '';
   } catch (err) {
     console.error(err);
-    alert('El texto pegado está dañado o no es un formato JSON válido.');
+    alert('El texto pegado no es un JSON válido.');
   }
 });
 
