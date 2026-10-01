@@ -8,21 +8,34 @@
   <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#1e1e24">
   <link rel="apple-touch-icon" href="./icon.jpg">
+  <style>
+    /* Protección directa para que el logo nunca se desborde */
+    .app-icon {
+      width: 44px !important;
+      height: 44px !important;
+      max-width: 44px !important;
+      max-height: 44px !important;
+      object-fit: cover !important;
+      border-radius: 10px !important;
+      flex-shrink: 0 !important;
+      display: inline-block !important;
+    }
+  </style>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 </head>
 <body>
   <header>
-    <div class="header-container">
-      <div class="logo-box">
-        <img src="./icon.jpg" alt="Logo" class="app-icon">
+    <div class="header-container" style="display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; padding: 0.5rem 1rem;">
+      <div class="logo-box" style="display: flex; align-items: center; gap: 0.6rem;">
+        <img src="./icon.jpg" alt="Logo" class="app-icon" style="width: 44px; height: 44px; object-fit: cover; border-radius: 10px;">
         <div>
-          <h1>Coffee Break</h1>
-          <span class="subtitle">Food Metrics & Precision Kitchen</span>
+          <h1 style="margin: 0; font-size: 1.2rem; line-height: 1.2;">Coffee Break</h1>
+          <span class="subtitle" style="font-size: 0.75rem; color: var(--text-muted, #8e8e93);">Food Metrics & Precision Kitchen</span>
         </div>
       </div>
       <div class="date-picker-box">
-        <label for="diario-fecha">Fecha:</label>
-        <input type="date" id="diario-fecha">
+        <label for="diario-fecha" style="font-size: 0.8rem;">Fecha:</label>
+        <input type="date" id="diario-fecha" style="font-size: 0.85rem; padding: 0.3rem;">
       </div>
     </div>
 
@@ -41,7 +54,6 @@
   <main>
     <!-- ================= PESTAÑA: DIARIO ================= -->
     <section id="tab-diario" class="tab-content active">
-      <!-- DASHBOARD DIARIO -->
       <div class="dashboard-grid">
         <div class="dash-card main-kcal">
           <h3>Calorías Restantes</h3>
@@ -69,10 +81,8 @@
         <button id="btn-nueva-categoria" class="btn-secondary">+ Nueva Categoría de Comida</button>
       </div>
 
-      <!-- CONTENEDOR DINÁMICO DE CATEGORÍAS -->
       <div id="contenedor-categorias"></div>
 
-      <!-- MODAL PARA AGREGAR COMIDA -->
       <div id="modal-agregar-diario" class="modal hidden">
         <div class="modal-content">
           <h3 id="modal-diario-titulo">Agregar al Diario</h3>
@@ -98,7 +108,6 @@
 
     <!-- ================= PESTAÑA: SUGERENCIAS & IA ================= -->
     <section id="tab-sugerencias" class="tab-content">
-      <!-- 1. CHEF IA CON GEMINI -->
       <div class="card">
         <h3>✨ Chef IA con Gemini</h3>
         <p style="color: var(--text-muted); font-size: 0.9rem;">
