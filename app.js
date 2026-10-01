@@ -2,6 +2,9 @@
 const DB_NAME = 'NutriAppDB';
 const DB_VERSION = 2;
 
+// URL de tu Proxy Seguro en Cloudflare Workers
+const WORKER_CHEF_URL = 'https://coffiachef.jyepsenc.workers.dev';
+
 let db = null;
 let alimentosCache = [];
 let recetasCache = [];
@@ -12,8 +15,9 @@ let fechaSeleccionada = new Date().toISOString().split('T')[0];
 // Estados de edición y selección
 let recetaBorrador = [];
 let recetaEditandoId = null;
-let alimentosMezclador = []; // Lista sin límite de IDs para mezclar
+let alimentosMezclador = [];
 let categoriaModalDiario = null;
+let recetaIAPendiente = null;
 
 // 1. REGISTRO DE SERVICE WORKER PARA PWA
 if ('serviceWorker' in navigator) {
@@ -894,6 +898,186 @@ window.eliminarEntradaDiario = function(id) {
 };
 
 /* ============================================================
+   SECCIÓN: CHEF IA MEDIANTE PROXY SEGURO EN CLOUDFLARE
+   ============================================================ */
+const selectAiObjetivo = document.getElementById('ai-objetivo-calorico');
+const contAiKcalManual = document.getElementById('contenedor-ai-kcal-manual');
+
+if (selectAiObjetivo) {
+  selectAiObjetivo.addEventListener('change', () => {
+    if (selectAiObjetivo.value === 'manual') {
+      contAiKcalManual.classList.remove('hidden');
+    } else {
+      contAiKcalManual.classList.add('hidden');
+    }
+  });
+}
+
+document.getElementById('btn-generar-receta-ia').addEventListener('click', async () => {
+  if (alimentosCache.length < 2) {
+    alert('Debes tener al menos 2 o 3 alimentos guardados en tu catálogo para que la IA arme una preparación.');
+    return;
+  }
+
+  const rest = window.restantesGlobales || { kcal: 0, proteinas: 0, carbohidratos: 0, grasas: 0 };
+  let metaKcal = 0;
+
+  if (selectAiObjetivo.value === 'manual') {
+    metaKcal = parseFloat(document.getElementById('ai-kcal-manual').value) || 0;
+    if (metaKcal <= 0) return alert('Ingresa un valor válido de Kcal manuales.');
+  } else {
+    metaKcal = rest.kcal;
+    if (metaKcal <= 20) {
+      return alert('Ya has alcanzado tus Kcal restantes del día. Cambia la opción a "Fijar Kcal manuales" para pedir una receta independiente.');
+    }
+  }
+
+  const tipoComida = document.getElementById('ai-tipo-comida').value;
+  const antojoExtra = document.getElementById('ai-antojo-extra').value.trim();
+
+  // Formatear catálogo disponible
+  const despensaTexto = alimentosCache.map(a => 
+    `{id: ${a.id}, nombre: "${a.nombre}", kcal100: ${a.kcal}, p100: ${a.proteinas}, c100: ${a.carbohidratos}, g100: ${a.grasas}}`
+  ).join(',\n');
+
+  const aiStatus = document.getElementById('ai-status');
+  const aiBox = document.getElementById('ai-resultado-receta');
+  aiStatus.textContent = 'El Chef Gemini está creando tu receta...';
+  aiStatus.classList.remove('hidden');
+  aiBox.classList.add('hidden');
+
+  const promptSistema = `
+Actúa como un Chef y Nutricionista deportivo de alta precisión.
+Tu misión es diseñar una receta deliciosa, coherente y con verdadero sentido gastronómico usando EXCLUSIVAMENTE alimentos de esta despensa:
+[
+${despensaTexto}
+]
+
+REQUISITOS ESTRICTOS:
+1. Objetivo calórico total de la receta: exactamente ${metaKcal.toFixed(0)} kcal (margen de tolerancia +- 15 kcal).
+2. Perfil culinario solicitado: "${tipoComida}".
+${antojoExtra ? `3. Preferencias del usuario: "${antojoExtra}".` : ''}
+4. NO uses ingredientes inventados que no estén en la lista (puedes asumir agua, sal o especias secas comunes).
+5. Calcula los gramos EXACTOS de cada ingrediente para sumar las Kcal objetivo.
+6. Responde ÚNICAMENTE en formato JSON válido con la siguiente estructura, sin texto antes ni después:
+{
+  "nombre": "Nombre atractivo del plato",
+  "descripcion": "Breve frase explicando la textura y sabor",
+  "ingredientes": [
+    { "alimentoId": id_del_alimento, "nombre": "nombre_exacto", "gramos": numero_gramos }
+  ],
+  "pasos": [
+    "Paso 1...",
+    "Paso 2...",
+    "Paso 3..."
+  ]
+}
+`;
+
+  try {
+    // Petición limpia a tu Cloudflare Worker (sin exponer API Keys en el cliente)
+    const resp = await fetch(WORKER_CHEF_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: promptSistema }] }],
+        generationConfig: { responseMimeType: 'application/json' }
+      })
+    });
+
+    if (!resp.ok) {
+      throw new Error(`Error en el servidor de Cloudflare (${resp.status}). Revisa que tu Worker esté desplegado.`);
+    }
+
+    const data = await resp.json();
+    const rawJson = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!rawJson) throw new Error('No se recibió respuesta válida del Chef IA.');
+
+    const recetaGenerada = JSON.parse(rawJson);
+
+    // Calcular totales nutricionales reales con los datos de nuestra base de datos
+    let totKcal = 0, totProt = 0, totCarbs = 0, totGrasas = 0, totPeso = 0;
+    const ingredientesVerificados = [];
+
+    recetaGenerada.ingredientes.forEach(ing => {
+      const ali = alimentosCache.find(a => a.id === ing.alimentoId);
+      if (ali) {
+        const g = parseFloat(ing.gramos) || 0;
+        const f = g / 100;
+        totKcal += ali.kcal * f;
+        totProt += ali.proteinas * f;
+        totCarbs += ali.carbohidratos * f;
+        totGrasas += ali.grasas * f;
+        totPeso += g;
+        ingredientesVerificados.push({
+          alimentoId: ali.id,
+          nombre: ali.nombre,
+          gramos: g,
+          kcalAporte: ali.kcal * f
+        });
+      }
+    });
+
+    if (ingredientesVerificados.length === 0) {
+      throw new Error('La IA no pudo emparejar los ingredientes con tu despensa.');
+    }
+
+    recetaIAPendiente = {
+      nombre: recetaGenerada.nombre,
+      ingredientes: ingredientesVerificados.map(i => ({ alimentoId: i.alimentoId, nombre: i.nombre, gramos: i.gramos })),
+      pesoTotal: totPeso,
+      kcalTotal: totKcal,
+      kcalPor100g: totPeso > 0 ? (totKcal / totPeso) * 100 : 0,
+      protPor100g: totPeso > 0 ? (totProt / totPeso) * 100 : 0,
+      carbsPor100g: totPeso > 0 ? (totCarbs / totPeso) * 100 : 0,
+      grasasPor100g: totPeso > 0 ? (totGrasas / totPeso) * 100 : 0
+    };
+
+    // Renderizar en tarjeta
+    document.getElementById('ai-receta-nombre').textContent = recetaGenerada.nombre;
+    document.getElementById('ai-receta-calorias').textContent = `${totKcal.toFixed(0)} kcal`;
+    document.getElementById('ai-receta-descripcion').textContent = recetaGenerada.descripcion || '';
+
+    const ulIng = document.getElementById('ai-receta-ingredientes');
+    ulIng.innerHTML = '';
+    ingredientesVerificados.forEach(ing => {
+      const li = document.createElement('li');
+      li.innerHTML = `<span><strong>${ing.nombre}</strong></span> <span class="sug-gramos">${ing.gramos.toFixed(1)} g</span> <small>(${ing.kcalAporte.toFixed(0)} kcal)</small>`;
+      ulIng.appendChild(li);
+    });
+
+    const olPasos = document.getElementById('ai-receta-pasos');
+    olPasos.innerHTML = '';
+    (recetaGenerada.pasos || []).forEach(paso => {
+      const li = document.createElement('li');
+      li.textContent = paso;
+      olPasos.appendChild(li);
+    });
+
+    document.getElementById('ai-macros-totales').textContent = `P: ${totProt.toFixed(1)}g | C: ${totCarbs.toFixed(1)}g | G: ${totGrasas.toFixed(1)}g`;
+
+    aiStatus.classList.add('hidden');
+    aiBox.classList.remove('hidden');
+    aiBox.scrollIntoView({ behavior: 'smooth' });
+
+  } catch (err) {
+    console.error(err);
+    aiStatus.textContent = `❌ ${err.message}`;
+  }
+});
+
+document.getElementById('btn-guardar-receta-ia').addEventListener('click', () => {
+  if (!recetaIAPendiente) return;
+
+  const tx = db.transaction(['recetas'], 'readwrite');
+  tx.objectStore('recetas').add(recetaIAPendiente);
+  tx.oncomplete = () => {
+    alert(`✓ ¡"${recetaIAPendiente.nombre}" se guardó en tus Recetas compuestas!`);
+    recargarRecetas();
+  };
+});
+
+/* ============================================================
    SECCIÓN: MEZCLADOR PERSONALIZADO (ILIMITADO + KCAL MANUAL/RESTANTE)
    ============================================================ */
 const mezcladorFiltro = document.getElementById('mezclador-filtro');
@@ -910,7 +1094,6 @@ function poblarSelectMezclador(filtro = '') {
   alis.forEach(a => sel.appendChild(new Option(`${a.nombre} (${a.kcal} kcal/100g | P:${a.proteinas}g)`, a.id)));
 }
 
-// Alternar entre Kcal restantes del día y Kcal manuales
 const selectTipoObjetivo = document.getElementById('mezclador-tipo-objetivo');
 const contKcalManual = document.getElementById('contenedor-kcal-manual');
 if (selectTipoObjetivo) {
@@ -930,7 +1113,6 @@ document.getElementById('btn-agregar-alimento-mezcla').addEventListener('click',
 
   if (alimentosMezclador.includes(id)) return alert('Este alimento ya está en la selección.');
 
-  // Ya no hay límite de 4: puedes agregar todos los que quieras
   alimentosMezclador.push(id);
   renderizarSeleccionMezclador();
 });
@@ -975,7 +1157,6 @@ document.getElementById('btn-calcular-mezcla-personalizada').addEventListener('c
     return;
   }
 
-  // Determinar objetivo de Kcal (Manual o Restantes)
   const tipoObj = document.getElementById('mezclador-tipo-objetivo').value;
   let totalKcal = 0;
 
@@ -988,7 +1169,7 @@ document.getElementById('btn-calcular-mezcla-personalizada').addEventListener('c
   } else {
     totalKcal = rest.kcal;
     if (totalKcal <= 0) {
-      cont.innerHTML = '<p style="color: var(--text-muted);">Ya has alcanzado o superado tu meta de Kcal del día. Puedes cambiar la opción a "Fijar Kcal personalizadas" para calcular una colación independiente.</p>';
+      cont.innerHTML = '<p style="color: var(--text-muted);">Ya has alcanzado tus Kcal restantes del día. Cambia la opción a "Fijar Kcal personalizadas".</p>';
       return;
     }
   }
@@ -1013,9 +1194,7 @@ document.getElementById('btn-calcular-mezcla-personalizada').addEventListener('c
     return { p, c, g };
   };
 
-  // -------------------------------------------------------------
-  // ESTRATEGIA 1: Mayor Kcal Dominante (Más Kcal aportadas por los más densos)
-  // -------------------------------------------------------------
+  // ESTRATEGIA 1: Mayor Kcal Dominante
   const ordenDesc = [...items].sort((a, b) => b.kcal - a.kcal);
   let pesosE1 = [];
   let sumaPonderadores = 0;
@@ -1036,9 +1215,7 @@ document.getElementById('btn-calcular-mezcla-personalizada').addEventListener('c
     totales: totE1
   });
 
-  // -------------------------------------------------------------
-  // ESTRATEGIA 2: Balance Parejo (Distribución calórica equitativa)
-  // -------------------------------------------------------------
+  // ESTRATEGIA 2: Balance Parejo
   let pesosE2 = [];
   const kcalPorItem = totalKcal / num;
   items.forEach(item => {
@@ -1054,9 +1231,7 @@ document.getElementById('btn-calcular-mezcla-personalizada').addEventListener('c
     totales: totE2
   });
 
-  // -------------------------------------------------------------
-  // ESTRATEGIA 3: Menor Kcal Dominante (Mayor volumen y saciedad)
-  // -------------------------------------------------------------
+  // ESTRATEGIA 3: Menor Kcal Dominante (Mayor volumen)
   let pesosE3 = [];
   items.forEach(item => {
     const rank = ordenDesc.findIndex(x => x.id === item.id);
@@ -1073,9 +1248,7 @@ document.getElementById('btn-calcular-mezcla-personalizada').addEventListener('c
     totales: totE3
   });
 
-  // -------------------------------------------------------------
-  // ESTRATEGIA 4: Cascada por Densidad (Porción mínima a los más densos)
-  // -------------------------------------------------------------
+  // ESTRATEGIA 4: Cascada por Densidad
   let kcalRestanteCascada = totalKcal;
   let pesosE4Map = {};
 
@@ -1110,12 +1283,10 @@ document.getElementById('btn-calcular-mezcla-personalizada').addEventListener('c
     totales: totE4
   });
 
-  // Renderizar las 4 tarjetas
   estrategias.forEach(est => {
     const card = document.createElement('div');
     card.className = 'sugerencia-card';
 
-    // Comprobar excesos frente al remanente del día
     const excesoP = est.totales.p > rest.proteinas + 0.5 ? (est.totales.p - rest.proteinas) : 0;
     const excesoC = est.totales.c > rest.carbohidratos + 0.5 ? (est.totales.c - rest.carbohidratos) : 0;
     const excesoG = est.totales.g > rest.grasas + 0.5 ? (est.totales.g - rest.grasas) : 0;
@@ -1265,7 +1436,7 @@ function generarObjetoRespaldo() {
     if (!db) return reject('Base de datos no inicializada');
     const tx = db.transaction(['alimentos', 'recetas', 'diario', 'config'], 'readonly');
     const respaldo = {
-      versionApp: 'CoffeeBreak_v4',
+      versionApp: 'CoffeeBreak_v6',
       fechaExportacion: new Date().toISOString(),
       alimentos: [],
       recetas: [],

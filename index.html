@@ -306,17 +306,89 @@
       </div>
     </section>
 
-    <!-- TAB 5: SUGERENCIAS (CON MEZCLADOR PERSONALIZADO ILIMITADO Y KCAL A ELECCIÓN) -->
+    <!-- TAB 5: SUGERENCIAS (CON MEZCLADOR Y ASISTENTE CULINARIO CON IA GEMINI) -->
     <section id="tab-sugerencias" class="tab-content">
+
+      <!-- MÓDULO NUEVO: ASISTENTE CULINARIO CON IA GEMINI -->
+      <div class="card" style="border: 1px solid #8b5cf6;">
+        <h2 style="color: #a78bfa;">Chef IA con Gemini (Recetas desde tu Despensa)</h2>
+        <p class="nota-filtro" style="margin-bottom: 0.8rem;">
+          La IA examina tus alimentos guardados y diseña una receta gastronómica real ajustada a las calorías que necesitas. <em>(Requiere internet y tu clave gratuita de Gemini configurada en Respaldo)</em>.
+        </p>
+
+        <div class="grid-form" style="margin-bottom: 0.6rem;">
+          <div>
+            <label for="ai-tipo-comida">Tipo de comida:</label>
+            <select id="ai-tipo-comida">
+              <option value="Cualquiera con sentido">Cualquiera con sentido culinario</option>
+              <option value="Desayuno dulce">Desayuno dulce</option>
+              <option value="Desayuno salado">Desayuno salado</option>
+              <option value="Almuerzo o cena">Almuerzo o cena</option>
+              <option value="Postre dulce">Postre dulce</option>
+              <option value="Snack o colación salada">Snack o colación salada</option>
+              <option value="Snack o colación dulce">Snack o colación dulce</option>
+              <option value="Batido o bowl cremoso">Batido o bowl cremoso</option>
+            </select>
+          </div>
+          <div>
+            <label for="ai-objetivo-calorico">Objetivo calórico:</label>
+            <select id="ai-objetivo-calorico">
+              <option value="restantes">Kcal restantes del día</option>
+              <option value="manual">Fijar Kcal manuales</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="contenedor-ai-kcal-manual" class="form-group hidden">
+          <label for="ai-kcal-manual">Calorías exactas deseadas:</label>
+          <input type="number" id="ai-kcal-manual" placeholder="Ej: 450" min="50" step="any">
+        </div>
+
+        <div class="form-group">
+          <label for="ai-antojo-extra">Detalles o antojo especial (opcional):</label>
+          <input type="text" id="ai-antojo-extra" placeholder="Ej: rápido, sin cocción, textura crocante, tibio...">
+        </div>
+
+        <button type="button" id="btn-generar-receta-ia" class="btn-primary" style="background-color: #8b5cf6;">
+          ✨ Pedir Receta al Chef Gemini
+        </button>
+
+        <div id="ai-status" class="hidden" style="margin-top: 0.8rem; font-size: 0.85rem; color: #a78bfa; text-align: center; font-weight: bold;">
+          Analizando despensa y diseñando receta...
+        </div>
+
+        <!-- Tarjeta de resultado de la IA -->
+        <div id="ai-resultado-receta" class="resultado-box hidden" style="margin-top: 1rem; border-color: #8b5cf6; background: rgba(139, 92, 246, 0.08);">
+          <div class="section-row" style="border-color: rgba(139, 92, 246, 0.2);">
+            <h3 id="ai-receta-nombre" style="color: #c4b5fd;">Nombre de la Receta</h3>
+            <span id="ai-receta-calorias" style="font-weight: bold; color: var(--text);">0 Kcal</span>
+          </div>
+
+          <p id="ai-receta-descripcion" style="font-size: 0.85rem; color: var(--text-muted); margin: 0.5rem 0; font-style: italic;"></p>
+
+          <h4 style="font-size: 0.9rem; margin-top: 0.6rem;">Ingredientes calculados:</h4>
+          <ul id="ai-receta-ingredientes" class="lista-items" style="margin-bottom: 0.6rem;"></ul>
+
+          <h4 style="font-size: 0.9rem; margin-top: 0.6rem;">Pasos de preparación:</h4>
+          <ol id="ai-receta-pasos" style="padding-left: 1.2rem; font-size: 0.85rem; line-height: 1.4; margin-bottom: 0.8rem; color: var(--text);"></ol>
+
+          <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.8rem; border-top: 1px solid var(--border); padding-top: 0.4rem;">
+            Aporte nutricional: <strong id="ai-macros-totales">P: 0g | C: 0g | G: 0g</strong>
+          </div>
+
+          <button type="button" id="btn-guardar-receta-ia" class="btn-primary" style="background-color: var(--success);">
+            ✓ Guardar como Receta en mi catálogo
+          </button>
+        </div>
+      </div>
       
       <!-- MEZCLADOR PERSONALIZADO -->
-      <div class="card" style="border: 1px solid var(--primary);">
+      <div class="card" style="border: 1px solid var(--primary); margin-top: 1.2rem;">
         <h2 style="color: var(--primary);">Mezclador Personalizado (Sin Límite de Alimentos)</h2>
         <p class="nota-filtro" style="margin-bottom: 0.8rem;">
           Selecciona 2 o más alimentos de tu catálogo y define cuántas Kcal deseas completar para generar las 4 estrategias.
         </p>
 
-        <!-- Selector de objetivo de Kcal -->
         <fieldset style="margin-bottom: 0.8rem;">
           <legend>Objetivo Calórico de la Mezcla</legend>
           <div class="form-group">
@@ -380,8 +452,25 @@
       </div>
     </section>
 
-    <!-- TAB 6: RESPALDO -->
+    <!-- TAB 6: RESPALDO Y CONFIGURACIÓN DE IA -->
     <section id="tab-backup" class="tab-content">
+      
+      <!-- CONFIGURACIÓN DE GEMINI API KEY -->
+      <div class="card" style="border: 1px solid #8b5cf6;">
+        <h2 style="color: #a78bfa;">Configuración de Google Gemini (Chef IA)</h2>
+        <p class="nota-filtro" style="margin-bottom: 0.8rem;">
+          Obtén tu clave gratuita en <a href="https://aistudio.google.com/" target="_blank" style="color: #c4b5fd;">aistudio.google.com</a>. Se almacena localmente y de forma privada en este teléfono.
+        </p>
+
+        <div class="form-group">
+          <label for="input-gemini-api-key">Clave API de Gemini:</label>
+          <input type="password" id="input-gemini-api-key" placeholder="Pega aquí tu clave AIzaSy...">
+        </div>
+        <button type="button" id="btn-guardar-gemini-key" class="btn-primary" style="background-color: #8b5cf6;">
+          Guardar Clave en el Dispositivo
+        </button>
+      </div>
+
       <div class="card">
         <h2>Copia de Seguridad y Portabilidad</h2>
         <p class="nota-filtro" style="margin-bottom: 1rem;">
