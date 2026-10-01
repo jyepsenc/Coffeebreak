@@ -1,4 +1,4 @@
-const CACHE_NAME = 'coffeebreak-cache-v14';
+const CACHE_NAME = 'coffeebreak-cache-v16';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
