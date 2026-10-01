@@ -4,515 +4,544 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Coffee Break - Food Metrics</title>
-  
-  <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#121316">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="CoffeeBreak">
+  <link rel="stylesheet" href="./styles.css">
+  <link rel="manifest" href="./manifest.json">
+  <meta name="theme-color" content="#1e1e24">
   <link rel="apple-touch-icon" href="./icon.jpg">
-  <link rel="icon" type="image/jpeg" href="./icon.jpg">
-
-  <link rel="stylesheet" href="styles.css">
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 </head>
 <body>
-
   <header>
-    <div class="brand">
-      <h1 class="brand-title">Coffee Break</h1>
-      <span class="brand-subtitle">Food Metrics</span>
+    <div class="header-container">
+      <div class="logo-box">
+        <img src="./icon.jpg" alt="Logo" class="app-icon">
+        <div>
+          <h1>Coffee Break</h1>
+          <span class="subtitle">Food Metrics & Precision Kitchen</span>
+        </div>
+      </div>
+      <div class="date-picker-box">
+        <label for="diario-fecha">Fecha:</label>
+        <input type="date" id="diario-fecha">
+      </div>
     </div>
-    <nav class="tab-nav">
+
+    <!-- NAVEGACIÓN POR PESTAÑAS -->
+    <nav class="nav-tabs">
       <button class="tab-btn active" data-tab="tab-diario">Diario</button>
+      <button class="tab-btn" data-tab="tab-sugerencias">Sugerencias & IA</button>
+      <button class="tab-btn" data-tab="tab-calculadora">Calculadora</button>
       <button class="tab-btn" data-tab="tab-alimentos">Alimentos</button>
       <button class="tab-btn" data-tab="tab-recetas">Recetas</button>
       <button class="tab-btn" data-tab="tab-metas">Metas</button>
-      <button class="tab-btn" data-tab="tab-sugerencias">Sugerencias</button>
-      <button class="tab-btn" data-tab="tab-backup">Respaldo</button>
+      <button class="tab-btn" data-tab="tab-respaldo">Respaldo</button>
     </nav>
   </header>
 
   <main>
-    <!-- TAB 1: DIARIO -->
+    <!-- ================= PESTAÑA: DIARIO ================= -->
     <section id="tab-diario" class="tab-content active">
-      <div class="card dashboard">
-        <div class="dashboard-header">
-          <h2>Balance del Día</h2>
-          <input type="date" id="diario-fecha">
+      <!-- DASHBOARD DIARIO -->
+      <div class="dashboard-grid">
+        <div class="dash-card main-kcal">
+          <h3>Calorías Restantes</h3>
+          <div class="dash-value" id="dash-kcal-restante">0</div>
+          <div class="dash-sub">Consumidas: <span id="dash-kcal-consumido">0</span> / Meta: <span id="dash-kcal-meta">2000</span></div>
         </div>
-
-        <div class="balance-kcal">
-          <div>Consumido: <span id="dash-kcal-consumido">0</span> kcal</div>
-          <div class="kcal-restante"><strong id="dash-kcal-restante">0</strong> kcal restantes</div>
-          <div>Meta: <span id="dash-kcal-meta">0</span> kcal</div>
+        <div class="dash-card" id="col-prot">
+          <h3>Proteínas Restantes</h3>
+          <div class="dash-value" id="dash-prot-restante">0g</div>
+          <div class="dash-sub" id="dash-prot-sub">0 / 0g</div>
         </div>
-
-        <div class="macros-balance-grid">
-          <div class="macro-col" id="col-prot">
-            <span>Proteínas</span>
-            <strong id="dash-prot-restante">0g</strong>
-            <small id="dash-prot-sub">0 / 0g</small>
-          </div>
-          <div class="macro-col" id="col-carbs">
-            <span>Carbos</span>
-            <strong id="dash-carbs-restante">0g</strong>
-            <small id="dash-carbs-sub">0 / 0g</small>
-          </div>
-          <div class="macro-col" id="col-grasas">
-            <span>Grasas</span>
-            <strong id="dash-grasas-restante">0g</strong>
-            <small id="dash-grasas-sub">0 / 0g</small>
-          </div>
+        <div class="dash-card" id="col-carbs">
+          <h3>Carbos Restantes</h3>
+          <div class="dash-value" id="dash-carbs-restante">0g</div>
+          <div class="dash-sub" id="dash-carbs-sub">0 / 0g</div>
+        </div>
+        <div class="dash-card" id="col-grasas">
+          <h3>Grasas Restantes</h3>
+          <div class="dash-value" id="dash-grasas-restante">0g</div>
+          <div class="dash-sub" id="dash-grasas-sub">0 / 0g</div>
         </div>
       </div>
 
-      <!-- Modal flotante para agregar comida con buscador -->
-      <div id="modal-agregar-diario" class="card hidden" style="border: 2px solid var(--primary); margin-bottom: 1.2rem;">
-        <div class="section-row">
+      <div style="display: flex; justify-content: flex-end; margin-bottom: 1rem;">
+        <button id="btn-nueva-categoria" class="btn-secondary">+ Nueva Categoría de Comida</button>
+      </div>
+
+      <!-- CONTENEDOR DINÁMICO DE CATEGORÍAS -->
+      <div id="contenedor-categorias"></div>
+
+      <!-- MODAL FLOTANTE PARA AGREGAR COMIDA -->
+      <div id="modal-agregar-diario" class="modal hidden">
+        <div class="modal-content">
           <h3 id="modal-diario-titulo">Agregar al Diario</h3>
-          <button type="button" class="btn-del" onclick="cerrarModalDiario()">Cerrar</button>
+          <div class="form-group" style="margin-top: 1rem;">
+            <label>Filtrar alimento o receta:</label>
+            <input type="text" id="diario-buscador" placeholder="Escribe para buscar...">
+          </div>
+          <div class="form-group">
+            <label>Seleccionar elemento:</label>
+            <select id="diario-select-item"></select>
+          </div>
+          <div class="form-group">
+            <label>Gramos consumidos:</label>
+            <input type="number" id="diario-input-gramos" placeholder="Ej: 150" min="1" step="0.5">
+          </div>
+          <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+            <button id="btn-confirmar-agregar-diario" class="btn-primary" style="flex: 1;">Agregar</button>
+            <button onclick="cerrarModalDiario()" class="btn-secondary" style="flex: 1;">Cancelar</button>
+          </div>
         </div>
-        <div class="form-group" style="margin-top: 0.6rem;">
-          <label>Buscar alimento o receta:</label>
-          <input type="text" id="diario-buscador" placeholder="Escribe para filtrar...">
-        </div>
-        <div class="form-group">
-          <label>Selecciona elemento:</label>
-          <select id="diario-select-item" size="5" style="height: 120px;"></select>
-        </div>
-        <div class="form-group">
-          <label>Gramos consumidos:</label>
-          <input type="number" id="diario-input-gramos" placeholder="Ej: 150" min="1" step="any">
-        </div>
-        <button type="button" id="btn-confirmar-agregar-diario" class="btn-primary" style="background-color: var(--success);">
-          ✓ Guardar en Diario
-        </button>
-      </div>
-
-      <div class="card">
-        <div class="section-row">
-          <h2>Comidas Registradas</h2>
-          <button id="btn-nueva-categoria" class="btn-secondary">+ Categoría</button>
-        </div>
-        <div id="contenedor-categorias"></div>
       </div>
     </section>
 
-    <!-- TAB 2: ALIMENTOS, ESCÁNER Y CALCULADORA -->
-    <section id="tab-alimentos" class="tab-content">
+    <!-- ================= PESTAÑA: SUGERENCIAS & IA ================= -->
+    <section id="tab-sugerencias" class="tab-content">
+      <!-- 1. CHEF IA CON GEMINI -->
       <div class="card">
-        <h2>Escanear Tabla con Foto</h2>
-        <p class="nota-filtro" style="margin-bottom: 0.8rem;">
-          Sube una foto clara. Los datos se normalizan para que revises y confirmes antes de guardar.
+        <h3>✨ Chef IA con Gemini</h3>
+        <p style="color: var(--text-muted); font-size: 0.9rem;">
+          Crea recetas coherentes usando exclusivamente los alimentos de tu base de datos mediante tu proxy seguro.
         </p>
 
-        <div>
-          <input type="file" id="input-foto-tabla" accept="image/*" style="display: none;">
-          <button type="button" class="btn-primary" onclick="document.getElementById('input-foto-tabla').click()">
-            📷 Subir / Tomar Foto de la Tabla
+        <div style="display: flex; flex-direction: column; gap: 0.8rem; margin-top: 1rem;">
+          <div>
+            <label><strong>Objetivo Calórico:</strong></label>
+            <select id="ai-objetivo-calorico">
+              <option value="restante">Calorías restantes del día</option>
+              <option value="manual">Fijar Kcal manuales</option>
+            </select>
+          </div>
+
+          <div id="contenedor-ai-kcal-manual" class="hidden">
+            <label>Kcal deseadas para la receta:</label>
+            <input type="number" id="ai-kcal-manual" placeholder="Ej: 450" min="50" step="10">
+          </div>
+
+          <div>
+            <label><strong>Tipo de comida / Momento:</strong></label>
+            <select id="ai-tipo-comida">
+              <option value="Almuerzo o plato de fondo salado">Almuerzo o plato de fondo</option>
+              <option value="Desayuno nutritivo">Desayuno nutritivo</option>
+              <option value="Once o cena ligera">Once o cena ligera</option>
+              <option value="Snack o colación dulce">Snack o colación dulce</option>
+              <option value="Snack salado o merienda rápida">Snack salado / merienda</option>
+              <option value="Postre saludable">Postre saludable</option>
+            </select>
+          </div>
+
+          <!-- MODO INGREDIENTE URGENTE -->
+          <div style="background: rgba(120, 120, 128, 0.08); padding: 0.8rem; border-radius: 8px; border: 1px dashed var(--border);">
+            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-weight: 600;">
+              <input type="checkbox" id="ai-check-urgente"> ⚠️ Modo "Gastar Ingrediente Urgente"
+            </label>
+            <div id="ai-contenedor-urgente" class="hidden" style="margin-top: 0.6rem; display: flex; flex-direction: column; gap: 0.5rem;">
+              <select id="ai-select-ingrediente-urgente">
+                <option value="">-- Selecciona qué alimento debes gastar --</option>
+              </select>
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <input type="number" id="ai-gramos-urgente" placeholder="Gramos exactos a gastar (ej: 80)" min="1" step="1">
+                <span style="font-size: 0.85rem; color: var(--text-muted);">g</span>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label><strong>Antojo o preferencia especial (opcional):</strong></label>
+            <input type="text" id="ai-antojo-extra" placeholder="Ej: textura crocante, sin calentar, alto en fibra...">
+          </div>
+
+          <button id="btn-generar-receta-ia" class="btn-primary" style="background: #6366f1; border-color: #4f46e5; margin-top: 0.5rem;">
+            ✨ Pedir Receta al Chef Gemini
           </button>
+          <div id="ai-status" class="hidden" style="color: var(--text-muted); font-size: 0.9rem; text-align: center; margin-top: 0.5rem;"></div>
         </div>
 
-        <div id="ocr-preview-container" class="hidden" style="margin-top: 1rem;">
-          <div style="text-align: center;">
-            <img id="img-preview" alt="Foto cargada" style="max-width: 100%; max-height: 220px; border-radius: 8px; border: 1px solid var(--border);">
+        <!-- TARJETA RESULTADO RECETA GENERADA -->
+        <div id="ai-resultado-receta" class="hidden" style="margin-top: 1.5rem; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 1rem;">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem;">
+            <h3 id="ai-receta-nombre" style="margin: 0; color: var(--primary);">Nombre Receta</h3>
+            <span id="ai-receta-calorias" style="font-weight: bold; background: var(--primary); color: white; padding: 0.2rem 0.6rem; border-radius: 16px; font-size: 0.85rem;">0 kcal</span>
           </div>
-          <div id="ocr-status" style="margin-top: 0.6rem; font-size: 0.85rem; color: var(--primary); text-align: center; font-weight: bold;">
-            Procesando imagen...
+          <p id="ai-receta-descripcion" style="font-style: italic; color: var(--text-muted); margin: 0.5rem 0; font-size: 0.9rem;"></p>
+
+          <!-- ESCALADOR DE PORCIONES -->
+          <div style="margin: 1rem 0; padding: 0.6rem; background: rgba(99, 102, 241, 0.08); border-radius: 8px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
+            <span style="font-size: 0.85rem; font-weight: 600;">Escalar porciones:</span>
+            <div style="display: flex; gap: 0.3rem;">
+              <button type="button" class="btn-secondary btn-scale active" data-scale="1" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;">1x</button>
+              <button type="button" class="btn-secondary btn-scale" data-scale="2" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;">2x</button>
+              <button type="button" class="btn-secondary btn-scale" data-scale="3" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;">3x</button>
+              <button type="button" class="btn-secondary btn-scale" data-scale="4" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;">4x</button>
+            </div>
+            <div id="ai-info-porcion" style="font-size: 0.8rem; color: var(--text-muted); width: 100%; text-align: right;"></div>
           </div>
-          <details style="margin-top: 0.6rem; font-size: 0.8rem;">
-            <summary>Ver texto exacto detectado</summary>
-            <pre id="ocr-raw-text" style="white-space: pre-wrap; background: var(--bg); padding: 0.5rem; border-radius: 6px; margin-top: 0.4rem; color: var(--text-muted); max-height: 150px; overflow-y: auto;"></pre>
-          </details>
+
+          <h4 style="margin: 0.8rem 0 0.4rem 0;">Ingredientes exactos:</h4>
+          <ul id="ai-receta-ingredientes" style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.4rem;"></ul>
+
+          <h4 style="margin: 1rem 0 0.4rem 0;">Preparación:</h4>
+          <ol id="ai-receta-pasos" style="padding-left: 1.2rem; margin: 0; line-height: 1.4;"></ol>
+
+          <div id="ai-macros-totales" style="margin-top: 1rem; font-weight: bold; font-size: 0.9rem; color: var(--text-muted); border-top: 1px solid var(--border); padding-top: 0.6rem;"></div>
+
+          <div style="display: flex; gap: 0.5rem; margin-top: 1rem; flex-wrap: wrap;">
+            <button id="btn-guardar-receta-ia" class="btn-primary" style="flex: 1;">💾 Guardar en Mis Recetas</button>
+            <button id="btn-iniciar-modo-cocina" class="btn-secondary" style="flex: 1; background: #10b981; color: white; border-color: #059669;">👨‍🍳 Modo Cocina</button>
+          </div>
         </div>
       </div>
 
-      <!-- Calculadora por Gramos con Buscador Predictivo -->
+      <!-- 2. MEZCLADOR PERSONALIZADO -->
+      <div class="card" style="margin-top: 1.5rem;">
+        <h3>🧪 Mezclador Libre de Ingredientes</h3>
+        <p style="color: var(--text-muted); font-size: 0.9rem;">
+          Selecciona varios alimentos y calcula 4 estrategias de pesos exactos para cuadrar tus calorías.
+        </p>
+
+        <div style="display: flex; flex-direction: column; gap: 0.8rem; margin-top: 1rem;">
+          <div>
+            <label><strong>Objetivo de calorías para la mezcla:</strong></label>
+            <select id="mezclador-tipo-objetivo">
+              <option value="restante">Usar Kcal restantes del día</option>
+              <option value="manual">Fijar Kcal personalizadas</option>
+            </select>
+          </div>
+
+          <div id="contenedor-kcal-manual" class="hidden">
+            <label>Kcal objetivo para la mezcla:</label>
+            <input type="number" id="mezclador-kcal-manual" placeholder="Ej: 350" min="10" step="10">
+          </div>
+
+          <div>
+            <label>Filtrar alimentos disponibles:</label>
+            <input type="text" id="mezclador-filtro" placeholder="Buscar ingrediente...">
+          </div>
+
+          <div style="display: flex; gap: 0.5rem;">
+            <select id="mezclador-select-alimento" style="flex: 1;"></select>
+            <button id="btn-agregar-alimento-mezcla" class="btn-secondary">+ Añadir</button>
+          </div>
+
+          <div>
+            <label><strong>Alimentos seleccionados (<span id="mezclador-contador-items">0</span>):</strong></label>
+            <ul id="mezclador-lista-seleccionados" class="lista-simple" style="margin-top: 0.4rem;">
+              <li style="color: var(--text-muted);">Ningún alimento seleccionado (elige al menos 2).</li>
+            </ul>
+          </div>
+
+          <button id="btn-calcular-mezcla-personalizada" class="btn-primary" style="margin-top: 0.5rem;">
+            Calcular 4 Estrategias de Mezcla
+          </button>
+        </div>
+
+        <div id="contenedor-sugerencias-personalizadas" style="margin-top: 1.5rem; display: flex; flex-direction: column; gap: 1rem;"></div>
+      </div>
+
+      <!-- 3. SUGERENCIAS GLOBALES HABITUALES -->
+      <div class="card" style="margin-top: 1.5rem;">
+        <h3>💡 Sugerencias Automáticas Globales</h3>
+        <p style="color: var(--text-muted); font-size: 0.9rem;">
+          Calcula automáticamente los gramos exactos de cualquier alimento o preparación para cubrir las Kcal restantes de la jornada.
+        </p>
+
+        <div style="display: flex; gap: 0.5rem; margin: 1rem 0; flex-wrap: wrap;">
+          <select id="sug-modo" style="flex: 1; min-width: 200px;">
+            <option value="individuales">Solo alimentos individuales</option>
+            <option value="combinaciones">Combinaciones frecuentes de recetas</option>
+            <option value="todos">Todos los elementos guardados</option>
+          </select>
+          <button id="btn-calcular-sugerencias" class="btn-primary">Ver Sugerencias</button>
+        </div>
+
+        <div id="contenedor-sugerencias" style="display: flex; flex-direction: column; gap: 1rem;"></div>
+      </div>
+    </section>
+
+    <!-- ================= PESTAÑA: CALCULADORA ================= -->
+    <section id="tab-calculadora" class="tab-content">
       <div class="card">
-        <h2>Calculadora por Gramos</h2>
-        <div class="form-group">
-          <label for="calc-filtro-nombre">Buscar por nombre:</label>
+        <h3>Calculadora Rápida al Gramo</h3>
+        <p style="color: var(--text-muted); font-size: 0.9rem;">
+          Calcula el aporte exacto de macronutrientes según el peso en la balanza de cocina.
+        </p>
+
+        <div class="form-group" style="margin-top: 1rem;">
+          <label>Filtrar por nombre:</label>
           <input type="text" id="calc-filtro-nombre" placeholder="Escribe para buscar...">
         </div>
+
         <div class="form-group">
-          <label for="select-alimento">Alimento o Receta:</label>
+          <label>Elemento a calcular:</label>
           <select id="select-alimento">
             <option value="">-- Elige un elemento --</option>
           </select>
         </div>
+
         <div class="form-group">
-          <label for="input-gramos">Peso a consumir (gramos):</label>
-          <input type="number" id="input-gramos" placeholder="Ej: 150" min="0" step="any">
+          <label>Gramos a consumir:</label>
+          <input type="number" id="input-gramos" placeholder="Ej: 85" min="1" step="0.5">
         </div>
+
         <div id="resultado-calculo" class="resultado-box hidden">
-          <p class="kcal-destacada"><strong id="calc-kcal">0</strong> Kcal</p>
-          <div class="grid-macros">
-            <div>Prot: <strong id="calc-prot">0</strong> g</div>
-            <div>Carb: <strong id="calc-carbs">0</strong> g</div>
-            <div>Grasa: <strong id="calc-grasas">0</strong> g</div>
-          </div>
+          <div class="macro-badge"><strong>Kcal:</strong> <span id="calc-kcal">0</span></div>
+          <div class="macro-badge"><strong>Prot:</strong> <span id="calc-prot">0</span>g</div>
+          <div class="macro-badge"><strong>Carbs:</strong> <span id="calc-carbs">0</span>g</div>
+          <div class="macro-badge"><strong>Grasas:</strong> <span id="calc-grasas">0</span>g</div>
         </div>
       </div>
+    </section>
 
+    <!-- ================= PESTAÑA: ALIMENTOS & OCR ================= -->
+    <section id="tab-alimentos" class="tab-content">
       <div class="card">
-        <h2>Registrar / Confirmar Alimento (por 100g)</h2>
-        <form id="form-alimento">
-          <div class="form-group">
-            <label for="nombre">Nombre del Alimento *</label>
-            <input type="text" id="nombre" required placeholder="Ej: Yogurt Batido Frutilla">
+        <h3>Registrar Alimento (por 100g)</h3>
+        
+        <!-- OCR CON TESSERACT -->
+        <div class="ocr-section">
+          <label class="btn-secondary" style="display: inline-block; cursor: pointer; text-align: center; width: 100%; box-sizing: border-box;">
+            📷 Tomar foto o subir etiqueta nutricional
+            <input type="file" id="input-foto-tabla" accept="image/*" style="display: none;">
+          </label>
+          
+          <div id="ocr-preview-container" class="hidden" style="margin-top: 1rem;">
+            <img id="img-preview" alt="Vista previa etiqueta" style="max-height: 180px; width: auto; border-radius: 8px; display: block; margin: 0 auto;">
+            <div id="ocr-status" style="font-size: 0.85rem; color: var(--primary); text-align: center; margin-top: 0.5rem; font-weight: bold;"></div>
+            <pre id="ocr-raw-text" class="hidden"></pre>
           </div>
-          <div class="form-group">
-            <label for="marca">Marca (opcional)</label>
-            <input type="text" id="marca" placeholder="Ej: Colun">
+        </div>
+
+        <!-- FORMULARIO DE ALIMENTO -->
+        <form id="form-alimento" style="margin-top: 1rem;">
+          <div class="form-row">
+            <div class="form-group" style="flex: 2;">
+              <label>Nombre del Alimento *:</label>
+              <input type="text" id="nombre" required placeholder="Ej: Avena Integral">
+            </div>
+            <div class="form-group" style="flex: 1;">
+              <label>Marca:</label>
+              <input type="text" id="marca" placeholder="Ej: Quaker">
+            </div>
           </div>
 
-          <fieldset>
-            <legend>Valores Principales por 100g</legend>
-            <div class="grid-form">
-              <div>
-                <label for="kcal">Kcal *</label>
-                <input type="number" id="kcal" step="any" min="0" required placeholder="0">
-              </div>
-              <div>
-                <label for="proteinas">Proteínas (g) *</label>
-                <input type="number" id="proteinas" step="any" min="0" required placeholder="0">
-              </div>
-              <div>
-                <label for="carbohidratos">Carbos (g) *</label>
-                <input type="number" id="carbohidratos" step="any" min="0" required placeholder="0">
-              </div>
-              <div>
-                <label for="grasas">Grasas Totales (g) *</label>
-                <input type="number" id="grasas" step="any" min="0" required placeholder="0">
-              </div>
+          <h4 style="margin: 1rem 0 0.5rem 0;">Información Nutricional (cada 100g)</h4>
+          <div class="form-grid-macros">
+            <div class="form-group">
+              <label>Energía (kcal) *:</label>
+              <input type="number" id="kcal" required step="0.1" placeholder="0">
             </div>
-          </fieldset>
-
-          <fieldset>
-            <legend>Subtipos Detallados (Opcionales)</legend>
-            <div class="grid-form">
-              <div><label for="azucares">Azúcares (g)</label><input type="number" id="azucares" step="any" min="0" value="0"></div>
-              <div><label for="fibra">Fibra (g)</label><input type="number" id="fibra" step="any" min="0" value="0"></div>
-              <div><label for="sat">G. Sat. (g)</label><input type="number" id="sat" step="any" min="0" value="0"></div>
-              <div><label for="mono">G. Mono. (g)</label><input type="number" id="mono" step="any" min="0" value="0"></div>
-              <div><label for="poli">G. Poli. (g)</label><input type="number" id="poli" step="any" min="0" value="0"></div>
-              <div><label for="trans">G. Trans (g)</label><input type="number" id="trans" step="any" min="0" value="0"></div>
-              <div><label for="sodio">Sodio (mg)</label><input type="number" id="sodio" step="any" min="0" value="0"></div>
-              <div><label for="colesterol">Colesterol (mg)</label><input type="number" id="colesterol" step="any" min="0" value="0"></div>
+            <div class="form-group">
+              <label>Proteínas (g) *:</label>
+              <input type="number" id="proteinas" required step="0.1" placeholder="0">
             </div>
-          </fieldset>
+            <div class="form-group">
+              <label>Carbohidratos (g) *:</label>
+              <input type="number" id="carbohidratos" required step="0.1" placeholder="0">
+            </div>
+            <div class="form-group">
+              <label>Grasas Totales (g) *:</label>
+              <input type="number" id="grasas" required step="0.1" placeholder="0">
+            </div>
+            <div class="form-group">
+              <label>Azúcares Totales (g):</label>
+              <input type="number" id="azucares" step="0.1" placeholder="0">
+            </div>
+            <div class="form-group">
+              <label>Fibra Dietaria (g):</label>
+              <input type="number" id="fibra" step="0.1" placeholder="0">
+            </div>
+            <div class="form-group">
+              <label>Grasa Saturada (g):</label>
+              <input type="number" id="sat" step="0.1" placeholder="0">
+            </div>
+            <div class="form-group">
+              <label>Grasa Monoinsaturada (g):</label>
+              <input type="number" id="mono" step="0.1" placeholder="0">
+            </div>
+            <div class="form-group">
+              <label>Grasa Poliinsaturada (g):</label>
+              <input type="number" id="poli" step="0.1" placeholder="0">
+            </div>
+            <div class="form-group">
+              <label>Grasas Trans (g):</label>
+              <input type="number" id="trans" step="0.1" placeholder="0">
+            </div>
+            <div class="form-group">
+              <label>Sodio (mg):</label>
+              <input type="number" id="sodio" step="1" placeholder="0">
+            </div>
+            <div class="form-group">
+              <label>Colesterol (mg):</label>
+              <input type="number" id="colesterol" step="1" placeholder="0">
+            </div>
+          </div>
 
-          <button type="submit" class="btn-primary" style="background-color: var(--success);">
-            ✓ Confirmar y Guardar Alimento
-          </button>
+          <button type="submit" class="btn-primary" style="margin-top: 1.2rem; width: 100%;">Guardar Alimento en Catálogo</button>
         </form>
       </div>
 
-      <div class="card">
-        <div class="section-row">
-          <h2>Mis Alimentos Guardados</h2>
-        </div>
-        <div class="form-group">
-          <input type="text" id="buscador-alimentos-guardados" placeholder="Filtrar alimentos guardados...">
+      <!-- CATÁLOGO GUARDADO -->
+      <div class="card" style="margin-top: 1.5rem;">
+        <h3>Alimentos Guardados</h3>
+        <div class="form-group" style="margin: 0.8rem 0;">
+          <input type="text" id="buscador-alimentos-guardados" placeholder="Buscar alimento en tu despensa...">
         </div>
         <ul id="lista-alimentos" class="lista-items"></ul>
       </div>
     </section>
 
-    <!-- TAB 3: RECETAS COMPUESTAS (CREAR Y EDITAR) -->
+    <!-- ================= PESTAÑA: RECETAS ================= -->
     <section id="tab-recetas" class="tab-content">
       <div class="card">
-        <h2 id="titulo-panel-receta">Crear Receta Compuesta</h2>
-        <div class="form-group">
-          <label for="receta-nombre">Nombre de la Receta *</label>
-          <input type="text" id="receta-nombre" placeholder="Ej: Porridge con Frutos Secos">
+        <h3 id="titulo-panel-receta">Crear Receta Compuesta</h3>
+        <p style="color: var(--text-muted); font-size: 0.9rem;">
+          Suma ingredientes para obtener el peso total de la preparación y calcular automáticamente sus valores por 100g.
+        </p>
+
+        <div class="form-group" style="margin-top: 1rem;">
+          <label>Nombre de la Receta / Preparación *:</label>
+          <input type="text" id="receta-nombre" placeholder="Ej: Porridge Proteico con Nueces">
         </div>
 
-        <fieldset>
-          <legend>Agregar Ingrediente</legend>
+        <div style="background: rgba(120, 120, 128, 0.08); padding: 1rem; border-radius: 8px; margin: 1rem 0;">
+          <h4 style="margin-top: 0;">Agregar Ingrediente</h4>
           <div class="form-group">
-            <input type="text" id="receta-filtro-ingrediente" placeholder="Buscar ingrediente por nombre...">
+            <input type="text" id="receta-filtro-ingrediente" placeholder="Buscar alimento base...">
           </div>
-          <div class="form-group">
-            <select id="receta-select-alimento">
-              <option value="">-- Elige un alimento base --</option>
-            </select>
+          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            <select id="receta-select-alimento" style="flex: 2; min-width: 180px;"></select>
+            <input type="number" id="receta-gramos-ingrediente" placeholder="Gramos" min="1" step="0.5" style="flex: 1; min-width: 100px;">
+            <button id="btn-agregar-ingrediente" class="btn-secondary">+ Agregar</button>
           </div>
-          <div class="grid-form">
-            <div>
-              <label>Gramos usados</label>
-              <input type="number" id="receta-gramos-ingrediente" placeholder="100" min="1" step="any">
-            </div>
-            <div style="display: flex; align-items: flex-end;">
-              <button type="button" id="btn-agregar-ingrediente" class="btn-secondary" style="width: 100%;">Agregar</button>
-            </div>
-          </div>
-        </fieldset>
-
-        <h3>Ingredientes de la receta:</h3>
-        <ul id="receta-lista-ingredientes" class="lista-items" style="margin-bottom: 1rem;">
-          <li style="color: var(--text-muted);">Sin ingredientes aún.</li>
-        </ul>
-
-        <div id="receta-totales-preview" class="resultado-box hidden">
-          <h4>Aporte Total de la Receta</h4>
-          <p><strong id="receta-total-kcal">0</strong> Kcal | Peso Total: <span id="receta-total-peso">0</span>g</p>
-          <small>Prot: <span id="receta-total-prot">0</span>g | Carbs: <span id="receta-total-carbs">0</span>g | Grasas: <span id="receta-total-grasas">0</span>g</small>
         </div>
 
-        <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
-          <button type="button" id="btn-guardar-receta" class="btn-primary" style="flex: 2;">Guardar Receta</button>
-          <button type="button" id="btn-cancelar-edicion-receta" class="btn-secondary hidden" style="flex: 1;">Cancelar</button>
+        <div>
+          <h4>Ingredientes de la Receta:</h4>
+          <ul id="receta-lista-ingredientes" class="lista-simple">
+            <li style="color: var(--text-muted);">Sin ingredientes aún.</li>
+          </ul>
+        </div>
+
+        <div id="receta-totales-preview" class="resultado-box hidden" style="margin-top: 1rem;">
+          <div class="macro-badge"><strong>Peso Total:</strong> <span id="receta-total-peso">0</span>g</div>
+          <div class="macro-badge"><strong>Kcal Totales:</strong> <span id="receta-total-kcal">0</span></div>
+          <div class="macro-badge"><strong>Prot:</strong> <span id="receta-total-prot">0</span>g</div>
+          <div class="macro-badge"><strong>Carbs:</strong> <span id="receta-total-carbs">0</span>g</div>
+          <div class="macro-badge"><strong>Grasas:</strong> <span id="receta-total-grasas">0</span>g</div>
+        </div>
+
+        <div style="display: flex; gap: 0.5rem; margin-top: 1.2rem;">
+          <button id="btn-guardar-receta" class="btn-primary" style="flex: 2;">Guardar Receta</button>
+          <button id="btn-cancelar-edicion-receta" class="btn-secondary hidden" style="flex: 1;">Cancelar Edición</button>
         </div>
       </div>
 
-      <div class="card">
-        <div class="section-row">
-          <h2>Mis Recetas Guardadas</h2>
-        </div>
-        <div class="form-group">
-          <input type="text" id="buscador-recetas-guardadas" placeholder="Filtrar recetas...">
+      <!-- RECETAS GUARDADAS -->
+      <div class="card" style="margin-top: 1.5rem;">
+        <h3>Recetas Guardadas</h3>
+        <div class="form-group" style="margin: 0.8rem 0;">
+          <input type="text" id="buscador-recetas-guardadas" placeholder="Buscar en tus recetas...">
         </div>
         <ul id="lista-recetas" class="lista-items"></ul>
       </div>
     </section>
 
-    <!-- TAB 4: METAS DIARIAS -->
+    <!-- ================= PESTAÑA: METAS ================= -->
     <section id="tab-metas" class="tab-content">
       <div class="card">
-        <h2>Configurar Metas Diarias</h2>
-        <form id="form-metas">
+        <h3>Metas Nutricionales Diarias</h3>
+        <p style="color: var(--text-muted); font-size: 0.9rem;">
+          Define tus requerimientos calóricos y de macronutrientes para el cálculo diario.
+        </p>
+
+        <form id="form-metas" style="margin-top: 1rem;">
           <div class="form-group">
-            <label for="meta-kcal">Calorías Totales Objetivo (Kcal) *</label>
-            <input type="number" id="meta-kcal" required min="100" step="any">
+            <label>Meta Calorías (kcal):</label>
+            <input type="number" id="meta-kcal" required min="500" step="10">
           </div>
-          <div class="grid-form">
-            <div>
-              <label for="meta-prot">Proteínas Objetivo (g) *</label>
-              <input type="number" id="meta-prot" required min="0" step="any">
-            </div>
-            <div>
-              <label for="meta-carbs">Carbos Objetivo (g) *</label>
-              <input type="number" id="meta-carbs" required min="0" step="any">
-            </div>
-            <div>
-              <label for="meta-grasas">Grasas Objetivo (g) *</label>
-              <input type="number" id="meta-grasas" required min="0" step="any">
-            </div>
+          <div class="form-group">
+            <label>Meta Proteínas (g):</label>
+            <input type="number" id="meta-prot" required min="0" step="1">
           </div>
-          <button type="submit" class="btn-primary" style="margin-top: 1rem;">Guardar Metas</button>
+          <div class="form-group">
+            <label>Meta Carbohidratos (g):</label>
+            <input type="number" id="meta-carbs" required min="0" step="1">
+          </div>
+          <div class="form-group">
+            <label>Meta Grasas (g):</label>
+            <input type="number" id="meta-grasas" required min="0" step="1">
+          </div>
+
+          <button type="submit" class="btn-primary" style="width: 100%; margin-top: 1rem;">Actualizar Metas Diarias</button>
         </form>
       </div>
     </section>
 
-    <!-- TAB 5: SUGERENCIAS (CON MEZCLADOR Y ASISTENTE CULINARIO CON IA GEMINI) -->
-    <section id="tab-sugerencias" class="tab-content">
-
-      <!-- MÓDULO NUEVO: ASISTENTE CULINARIO CON IA GEMINI -->
-      <div class="card" style="border: 1px solid #8b5cf6;">
-        <h2 style="color: #a78bfa;">Chef IA con Gemini (Recetas desde tu Despensa)</h2>
-        <p class="nota-filtro" style="margin-bottom: 0.8rem;">
-          La IA examina tus alimentos guardados y diseña una receta gastronómica real ajustada a las calorías que necesitas. <em>(Requiere internet y tu clave gratuita de Gemini configurada en Respaldo)</em>.
-        </p>
-
-        <div class="grid-form" style="margin-bottom: 0.6rem;">
-          <div>
-            <label for="ai-tipo-comida">Tipo de comida:</label>
-            <select id="ai-tipo-comida">
-              <option value="Cualquiera con sentido">Cualquiera con sentido culinario</option>
-              <option value="Desayuno dulce">Desayuno dulce</option>
-              <option value="Desayuno salado">Desayuno salado</option>
-              <option value="Almuerzo o cena">Almuerzo o cena</option>
-              <option value="Postre dulce">Postre dulce</option>
-              <option value="Snack o colación salada">Snack o colación salada</option>
-              <option value="Snack o colación dulce">Snack o colación dulce</option>
-              <option value="Batido o bowl cremoso">Batido o bowl cremoso</option>
-            </select>
-          </div>
-          <div>
-            <label for="ai-objetivo-calorico">Objetivo calórico:</label>
-            <select id="ai-objetivo-calorico">
-              <option value="restantes">Kcal restantes del día</option>
-              <option value="manual">Fijar Kcal manuales</option>
-            </select>
-          </div>
-        </div>
-
-        <div id="contenedor-ai-kcal-manual" class="form-group hidden">
-          <label for="ai-kcal-manual">Calorías exactas deseadas:</label>
-          <input type="number" id="ai-kcal-manual" placeholder="Ej: 450" min="50" step="any">
-        </div>
-
-        <div class="form-group">
-          <label for="ai-antojo-extra">Detalles o antojo especial (opcional):</label>
-          <input type="text" id="ai-antojo-extra" placeholder="Ej: rápido, sin cocción, textura crocante, tibio...">
-        </div>
-
-        <button type="button" id="btn-generar-receta-ia" class="btn-primary" style="background-color: #8b5cf6;">
-          ✨ Pedir Receta al Chef Gemini
-        </button>
-
-        <div id="ai-status" class="hidden" style="margin-top: 0.8rem; font-size: 0.85rem; color: #a78bfa; text-align: center; font-weight: bold;">
-          Analizando despensa y diseñando receta...
-        </div>
-
-        <!-- Tarjeta de resultado de la IA -->
-        <div id="ai-resultado-receta" class="resultado-box hidden" style="margin-top: 1rem; border-color: #8b5cf6; background: rgba(139, 92, 246, 0.08);">
-          <div class="section-row" style="border-color: rgba(139, 92, 246, 0.2);">
-            <h3 id="ai-receta-nombre" style="color: #c4b5fd;">Nombre de la Receta</h3>
-            <span id="ai-receta-calorias" style="font-weight: bold; color: var(--text);">0 Kcal</span>
-          </div>
-
-          <p id="ai-receta-descripcion" style="font-size: 0.85rem; color: var(--text-muted); margin: 0.5rem 0; font-style: italic;"></p>
-
-          <h4 style="font-size: 0.9rem; margin-top: 0.6rem;">Ingredientes calculados:</h4>
-          <ul id="ai-receta-ingredientes" class="lista-items" style="margin-bottom: 0.6rem;"></ul>
-
-          <h4 style="font-size: 0.9rem; margin-top: 0.6rem;">Pasos de preparación:</h4>
-          <ol id="ai-receta-pasos" style="padding-left: 1.2rem; font-size: 0.85rem; line-height: 1.4; margin-bottom: 0.8rem; color: var(--text);"></ol>
-
-          <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.8rem; border-top: 1px solid var(--border); padding-top: 0.4rem;">
-            Aporte nutricional: <strong id="ai-macros-totales">P: 0g | C: 0g | G: 0g</strong>
-          </div>
-
-          <button type="button" id="btn-guardar-receta-ia" class="btn-primary" style="background-color: var(--success);">
-            ✓ Guardar como Receta en mi catálogo
-          </button>
-        </div>
-      </div>
-      
-      <!-- MEZCLADOR PERSONALIZADO -->
-      <div class="card" style="border: 1px solid var(--primary); margin-top: 1.2rem;">
-        <h2 style="color: var(--primary);">Mezclador Personalizado (Sin Límite de Alimentos)</h2>
-        <p class="nota-filtro" style="margin-bottom: 0.8rem;">
-          Selecciona 2 o más alimentos de tu catálogo y define cuántas Kcal deseas completar para generar las 4 estrategias.
-        </p>
-
-        <fieldset style="margin-bottom: 0.8rem;">
-          <legend>Objetivo Calórico de la Mezcla</legend>
-          <div class="form-group">
-            <label for="mezclador-tipo-objetivo">Calorías objetivo:</label>
-            <select id="mezclador-tipo-objetivo">
-              <option value="restantes">Completar Kcal restantes del día</option>
-              <option value="manual">Fijar Kcal personalizadas</option>
-            </select>
-          </div>
-          <div id="contenedor-kcal-manual" class="form-group hidden">
-            <label for="mezclador-kcal-manual">Kcal a consumir en esta preparación:</label>
-            <input type="number" id="mezclador-kcal-manual" placeholder="Ej: 450" min="20" step="any">
-          </div>
-        </fieldset>
-
-        <div class="form-group">
-          <input type="text" id="mezclador-filtro" placeholder="Filtrar alimentos disponibles...">
-        </div>
-
-        <div class="grid-form" style="margin-bottom: 0.6rem;">
-          <div style="grid-column: span 2;">
-            <select id="mezclador-select-alimento">
-              <option value="">-- Selecciona alimento para la mezcla --</option>
-            </select>
-          </div>
-        </div>
-        <button type="button" id="btn-agregar-alimento-mezcla" class="btn-secondary" style="width: 100%; margin-bottom: 0.8rem;">
-          + Añadir a la selección
-        </button>
-
-        <h3>Alimentos seleccionados para mezclar (<span id="mezclador-contador-items">0</span>):</h3>
-        <ul id="mezclador-lista-seleccionados" class="lista-items" style="margin-bottom: 0.8rem;">
-          <li style="color: var(--text-muted);">Ningún alimento seleccionado (elige al menos 2).</li>
-        </ul>
-
-        <button type="button" id="btn-calcular-mezcla-personalizada" class="btn-primary" style="background-color: var(--primary);">
-          ✨ Generar las 4 Estrategias de Mezcla
-        </button>
-
-        <div id="contenedor-sugerencias-personalizadas" style="margin-top: 1rem;"></div>
-      </div>
-
-      <!-- SUGERENCIAS AUTOMÁTICAS HABITUALES -->
+    <!-- ================= PESTAÑA: RESPALDO ================= -->
+    <section id="tab-respaldo" class="tab-content">
       <div class="card">
-        <h2>Sugerencias Automáticas Globales</h2>
-        <p class="nota-filtro">
-          <strong>Regla:</strong> Techo absoluto en Kcal restantes con prioridad en Proteínas. Si un macro se sobrepasa, se resalta en <span style="color: var(--danger); font-weight: bold;">rojo</span>.
+        <h3>Exportar e Importar Respaldo</h3>
+        <p style="color: var(--text-muted); font-size: 0.9rem;">
+          Guarda o transfiere tu base de datos completa de alimentos, recetas, diario y metas.
         </p>
 
-        <div class="form-group" style="margin-top: 0.8rem;">
-          <label for="sug-modo">Modalidad de sugerencia:</label>
-          <select id="sug-modo">
-            <option value="individuales">Alimentos / Recetas individuales</option>
-            <option value="combinaciones">Combinaciones habituales (Pares de recetas)</option>
-            <option value="todos">Mostrar ambas</option>
-          </select>
+        <div style="display: flex; gap: 0.5rem; margin-top: 1rem; flex-wrap: wrap;">
+          <button id="btn-generar-texto-backup" class="btn-primary" style="flex: 1; min-width: 180px;">Ver y Copiar Texto de Respaldo</button>
+          <button id="btn-descargar-archivo" class="btn-secondary" style="flex: 1; min-width: 180px;">Descargar Archivo .JSON</button>
         </div>
 
-        <button id="btn-calcular-sugerencias" class="btn-secondary" style="width: 100%;">Generar Sugerencias Automáticas</button>
-        <div id="contenedor-sugerencias" style="margin-top: 1.2rem;"></div>
-      </div>
-    </section>
+        <div id="contenedor-texto-exportado" class="hidden" style="margin-top: 1rem;">
+          <label>Copia todo este contenido para pegarlo en Notas:</label>
+          <textarea id="txt-backup-generado" rows="8" style="width: 100%; font-family: monospace; font-size: 0.8rem;" readonly></textarea>
+          <button id="btn-seleccionar-todo" class="btn-secondary" style="margin-top: 0.5rem; width: 100%;">Seleccionar Todo el Texto</button>
+        </div>
 
-    <!-- TAB 6: RESPALDO Y CONFIGURACIÓN DE IA -->
-    <section id="tab-backup" class="tab-content">
-      
-      <!-- CONFIGURACIÓN DE GEMINI API KEY -->
-      <div class="card" style="border: 1px solid #8b5cf6;">
-        <h2 style="color: #a78bfa;">Configuración de Google Gemini (Chef IA)</h2>
-        <p class="nota-filtro" style="margin-bottom: 0.8rem;">
-          Obtén tu clave gratuita en <a href="https://aistudio.google.com/" target="_blank" style="color: #c4b5fd;">aistudio.google.com</a>. Se almacena localmente y de forma privada en este teléfono.
-        </p>
+        <hr style="margin: 1.5rem 0; border: none; border-top: 1px solid var(--border);">
 
+        <h4>Restaurar Datos</h4>
         <div class="form-group">
-          <label for="input-gemini-api-key">Clave API de Gemini:</label>
-          <input type="password" id="input-gemini-api-key" placeholder="Pega aquí tu clave AIzaSy...">
-        </div>
-        <button type="button" id="btn-guardar-gemini-key" class="btn-primary" style="background-color: #8b5cf6;">
-          Guardar Clave en el Dispositivo
-        </button>
-      </div>
-
-      <div class="card">
-        <h2>Copia de Seguridad y Portabilidad</h2>
-        <p class="nota-filtro" style="margin-bottom: 1rem;">
-          Genera el texto de respaldo para guardarlo en la app <strong>Notas</strong> de tu iPhone o descárgalo como archivo.
-        </p>
-
-        <button id="btn-generar-texto-backup" class="btn-primary" style="margin-bottom: 0.6rem;">
-          📄 Ver y Copiar Texto de Respaldo
-        </button>
-
-        <div id="contenedor-texto-exportado" class="hidden" style="margin-bottom: 1.2rem;">
-          <label for="txt-backup-generado" style="color: var(--primary); font-weight: bold;">Copia este contenido completo:</label>
-          <textarea id="txt-backup-generado" rows="5" readonly style="width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem; font-family: monospace; font-size: 0.75rem;"></textarea>
-          <button id="btn-seleccionar-todo" class="btn-secondary" style="width: 100%; margin-top: 0.4rem;">
-            Seleccionar Todo el Texto
-          </button>
+          <label>Opción A: Pegar texto de respaldo:</label>
+          <textarea id="txt-importar-manual" rows="4" placeholder="Pega aquí el código JSON..."></textarea>
+          <button id="btn-restaurar-texto" class="btn-secondary" style="margin-top: 0.5rem; width: 100%;">Restaurar desde Texto Pegado</button>
         </div>
 
-        <button id="btn-descargar-archivo" class="btn-secondary" style="width: 100%; margin-bottom: 1.2rem;">
-          📥 Descargar como Archivo .json
-        </button>
-
-        <div style="border-top: 1px solid var(--border); padding-top: 1.2rem;">
-          <h3>Restaurar Datos</h3>
-          <p class="nota-filtro" style="margin-bottom: 0.6rem;">
-            Pega aquí el texto que tengas guardado en Notas:
-          </p>
-          <textarea id="txt-importar-manual" rows="4" style="width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem; font-family: monospace; font-size: 0.75rem;" placeholder="Pega aquí el contenido JSON..."></textarea>
-          <button id="btn-restaurar-texto" class="btn-primary" style="background-color: var(--success); margin-top: 0.5rem;">
-            ✓ Restaurar desde Texto Pegado
-          </button>
-
-          <p class="nota-filtro" style="margin-top: 1rem; margin-bottom: 0.4rem;">O carga el archivo .json si lo tienes en el teléfono:</p>
-          <label class="btn-secondary" style="display: block; text-align: center; padding: 0.6rem; cursor: pointer;">
-            📂 Cargar Archivo .json
-            <input type="file" id="input-importar-backup" accept=".json,application/json" style="display: none;">
-          </label>
+        <div class="form-group" style="margin-top: 1rem;">
+          <label>Opción B: Subir archivo de respaldo (.json):</label>
+          <input type="file" id="input-importar-backup" accept=".json">
         </div>
       </div>
     </section>
   </main>
 
-  <script src="app.js"></script>
+  <!-- MODAL PANTALLA COMPLETA: MODO COCINA (MANOS LIBRES CON VOZ) -->
+  <div id="modal-modo-cocina" class="hidden" style="position: fixed; inset: 0; background: var(--bg, #fff); z-index: 9999; padding: 1.5rem; display: flex; flex-direction: column; justify-content: space-between; overflow-y: auto;">
+    <div>
+      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 0.8rem;">
+        <span id="cocina-paso-contador" style="font-size: 1rem; font-weight: bold; color: var(--primary);">Paso 1 de 4</span>
+        <button id="btn-cerrar-cocina" class="btn-del" style="font-size: 1rem; padding: 0.4rem 0.8rem;">✕ Salir</button>
+      </div>
+
+      <h2 id="cocina-receta-titulo" style="margin: 1rem 0 0.5rem 0; font-size: 1.4rem;">Nombre de la receta</h2>
+      <div id="cocina-resumen-ingredientes" style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 1.5rem; line-height: 1.4;"></div>
+
+      <div style="background: rgba(120, 120, 128, 0.08); border-radius: 12px; padding: 1.5rem; margin: 1rem 0; min-height: 140px; display: flex; align-items: center;">
+        <p id="cocina-paso-texto" style="font-size: 1.35rem; line-height: 1.6; font-weight: 500; margin: 0; color: var(--text);">
+          Texto del paso...
+        </p>
+      </div>
+
+      <button id="btn-voz-paso" class="btn-secondary" style="display: flex; align-items: center; justify-content: center; gap: 0.5rem; width: 100%; padding: 0.8rem; font-size: 1rem;">
+        🔊 Escuchar paso en voz alta
+      </button>
+    </div>
+
+    <div style="display: flex; gap: 0.8rem; margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border);">
+      <button id="btn-cocina-anterior" class="btn-secondary" style="flex: 1; padding: 1rem; font-size: 1.1rem; font-weight: bold;">⬅ Anterior</button>
+      <button id="btn-cocina-siguiente" class="btn-primary" style="flex: 1; padding: 1rem; font-size: 1.1rem; font-weight: bold; background: #10b981; border-color: #059669;">Siguiente ➡</button>
+    </div>
+  </div>
+
+  <script src="./app.js"></script>
 </body>
 </html>
