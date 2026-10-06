@@ -15,6 +15,10 @@ let fechaSeleccionada = new Date().toISOString().split('T')[0];
 // Estados de sesión
 let sesionUsuarioActual = null; // { username, role, can_write }
 
+// Control estricto anti-bucle infinito
+let estaSincronizando = false;
+let ultimaSincronizacionTimestamp = 0;
+
 // Estados de edición y selección
 let recetaBorrador = [];
 let recetaEditandoId = null;
@@ -32,7 +36,7 @@ let conversionCalculadaTemp = null;
 let sugerenciaMifflinTemp = null;
 
 // ============================================================
-// 1. CAMBIO DE PESTAÑAS GLOBAL (BLINDADO - ACCESIBLE DESDE ONCLICK)
+// 1. CAMBIO DE PESTAÑAS GLOBAL (DIRECTO)
 // ============================================================
 window.cambiarPestana = function(targetId, btnElement) {
   const botones = document.querySelectorAll('.tab-btn');
@@ -110,13 +114,7 @@ function conectarDB() {
   });
 }
 
-async function cargarTodo() {
-  const inputFecha = document.getElementById('diario-fecha');
-  if (inputFecha) inputFecha.value = fechaSeleccionada;
-
-  poblarFormMetas();
-  verificarSesionGuardada();
-
+async function refrescarDatosLocales() {
   try {
     const database = await conectarDB();
     const tx = database.transaction(['config', 'alimentos', 'recetas'], 'readonly');
@@ -150,8 +148,17 @@ async function cargarTodo() {
 
     tx.oncomplete = () => cargarDiario();
   } catch (err) {
-    console.error('Error al abrir la base local:', err);
+    console.error('Error al refrescar datos locales:', err);
   }
+}
+
+async function cargarTodo() {
+  const inputFecha = document.getElementById('diario-fecha');
+  if (inputFecha) inputFecha.value = fechaSeleccionada;
+
+  poblarFormMetas();
+  verificarSesionGuardada();
+  await refrescarDatosLocales();
 }
 
 /* ============================================================
@@ -187,8 +194,6 @@ function verificarSesionGuardada() {
     } else if (panelAdmin) {
       panelAdmin.classList.add('hidden');
     }
-
-    setTimeout(() => autoSyncCompletoSilencioso(), 400);
   } else {
     sesionUsuarioActual = null;
     if (boxNo) boxNo.classList.remove('hidden');
@@ -218,6 +223,7 @@ safeOn('btn-auth-login', 'click', async () => {
 
     alert(`✓ ¡Bienvenido, ${data.user.username}!`);
     verificarSesionGuardada();
+    autoSyncCompletoSilencioso();
   } catch (err) {
     alert(`Error: ${err.message}`);
   }
@@ -232,21 +238,28 @@ safeOn('btn-auth-logout', 'click', () => {
 });
 
 /* ============================================================
-   SECCIÓN: SINCRONIZACIÓN AUTOMÁTICA EN BACKGROUND
+   SECCIÓN: SINCRONIZACIÓN AUTOMÁTICA EN BACKGROUND (ANTI-BUCLE)
    ============================================================ */
 async function autoSyncCompletoSilencioso() {
-  if (!sesionUsuarioActual) return;
+  if (!sesionUsuarioActual || estaSincronizando) return;
 
+  const ahora = Date.now();
+  if (ahora - ultimaSincronizacionTimestamp < 15000) return; // Mínimo 15 segundos entre sincronizaciones
+
+  estaSincronizando = true;
   const indicator = document.getElementById('sync-status-indicator');
   if (indicator) indicator.textContent = '🔄';
 
   try {
     await descargarCatalogoCompartido(false);
     await descargarDiarioPrivado(false);
+    ultimaSincronizacionTimestamp = Date.now();
     if (indicator) indicator.textContent = '☁️';
   } catch (err) {
     console.error('Error auto-sync:', err);
     if (indicator) indicator.textContent = '⚠️';
+  } finally {
+    estaSincronizando = false;
   }
 }
 
@@ -335,7 +348,7 @@ async function descargarDiarioPrivado(mostrarAlerta = true) {
 
     await new Promise((resolve) => tx.oncomplete = resolve);
 
-    cargarTodo();
+    await refrescarDatosLocales();
     if (statusMsg) statusMsg.textContent = `✓ Diario actualizado desde la nube: ${new Date().toLocaleTimeString()}`;
     if (mostrarAlerta) alert('✓ ¡Diario y metas personales actualizados!');
   } catch (err) {
@@ -426,8 +439,8 @@ async function descargarCatalogoCompartido(mostrarAlerta = true) {
 
     await new Promise((resolve) => tx.oncomplete = resolve);
 
-    cargarTodo();
-    if (statusMsg) statusMsg.textContent = `✓ Despensa compartida actualizada (Último cambio por: ${data.lastUpdatedBy || 'admin'})`;
+    await refrescarDatosLocales();
+    if (statusMsg) statusMsg.textContent = `✓ Despensa compartida actualizada (${new Date().toLocaleTimeString()})`;
     if (mostrarAlerta) alert('✓ ¡Alimentos y recetas compartidas sincronizados!');
   } catch (err) {
     if (statusMsg) statusMsg.textContent = `Error: ${err.message}`;
@@ -440,6 +453,7 @@ safeOn('btn-sync-catalog-descargar', 'click', () => descargarCatalogoCompartido(
 
 safeOn('sync-status-indicator', 'click', () => {
   if (!sesionUsuarioActual) return alert('Inicia sesión en la pestaña "Nube & Sesión".');
+  ultimaSincronizacionTimestamp = 0; // Permitir sync manual inmediato
   autoSyncCompletoSilencioso();
 });
 
@@ -1225,16 +1239,13 @@ safeOn('form-calc-mifflin', 'submit', (e) => {
     return;
   }
 
-  // TMB Mifflin-St Jeor
   let tmb = (10 * peso) + (6.25 * talla) - (5 * edad);
   if (genero === 'hombre') tmb += 5;
   else tmb -= 161;
 
-  // Gasto energético con actividad y ETA (~10%)
   const gastoActividad = tmb * factorActividad;
   const gastoTotalConEta = gastoActividad * 1.10;
 
-  // Ajuste según objetivo
   let caloriasObjetivo = gastoTotalConEta;
   let proteinaPorKg = 2.0;
 
@@ -2203,7 +2214,7 @@ async function generarObjetoRespaldo() {
   return new Promise((resolve, reject) => {
     const tx = database.transaction(['alimentos', 'recetas', 'diario', 'config'], 'readonly');
     const respaldo = {
-      versionApp: 'CoffeeBreak_v19',
+      versionApp: 'CoffeeBreak_v20',
       fechaExportacion: new Date().toISOString(),
       alimentos: [],
       recetas: [],
@@ -2296,8 +2307,8 @@ async function procesarEInsertarDatos(data) {
   }
 
   return new Promise((resolve, reject) => {
-    tx.oncomplete = () => {
-      cargarTodo();
+    tx.oncomplete = async () => {
+      await refrescarDatosLocales();
       resolve();
     };
     tx.onerror = (e) => {
@@ -2327,3 +2338,5 @@ safeOn('btn-restaurar-texto', 'click', async () => {
 // 6. ARRANQUE
 // ============================================================
 cargarTodo();
+// Auto-sincronización inicial única con delay seguro de 1 segundo
+setTimeout(() => autoSyncCompletoSilencioso(), 1000);

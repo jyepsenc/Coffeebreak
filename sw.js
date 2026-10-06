@@ -1,9 +1,9 @@
-const CACHE_NAME = 'coffeebreak-cache-v30';
+const CACHE_NAME = 'coffeebreak-cache-v31';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
-  './styles.css?v=30',
-  './app.js?v=30',
+  './styles.css?v=31',
+  './app.js?v=31',
   './manifest.json',
   './icon.jpg',
   'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'
