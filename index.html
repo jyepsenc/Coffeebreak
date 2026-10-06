@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Coffee Break - Food Metrics</title>
-  <link rel="stylesheet" href="./styles.css?v=25">
+  <link rel="stylesheet" href="./styles.css?v=27">
   <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#1e1e24">
   <link rel="apple-touch-icon" href="./icon.jpg">
@@ -37,7 +37,7 @@
       <button class="tab-btn" data-tab="tab-alimentos">Alimentos</button>
       <button class="tab-btn" data-tab="tab-recetas">Recetas</button>
       <button class="tab-btn" data-tab="tab-metas">Metas</button>
-      <button class="tab-btn" data-tab="tab-respaldo">Nube & Respaldo</button>
+      <button class="tab-btn" data-tab="tab-respaldo">Nube & Sesión</button>
     </nav>
   </header>
 
@@ -564,44 +564,81 @@
       </div>
     </section>
 
-    <!-- ================= PESTAÑA: NUBE & RESPALDO ================= -->
+    <!-- ================= PESTAÑA: NUBE & SESIÓN ================= -->
     <section id="tab-respaldo" class="tab-content">
-      <!-- BLOQUE DE SINCRONIZACIÓN CLOUDFLARE D1 -->
+      <!-- BLOQUE 1: SESIÓN PERSONAL (DIARIO Y METAS PRIVADAS) -->
       <div class="card" style="border-color: rgba(99, 102, 241, 0.4);">
-        <h3>☁️ Sincronización Online (Cloudflare D1)</h3>
+        <h3>👤 Sesión Personal (Diario y Metas)</h3>
         <p style="color: var(--text-muted); font-size: 0.9rem;">
-          Sincroniza tus alimentos, recetas y diario en tiempo real entre tu iPhone, Mac y cualquier otro dispositivo.
+          Inicia sesión para sincronizar de forma 100% privada y automática lo que has comido y tus metas en todos tus dispositivos.
         </p>
 
-        <div class="form-group" style="margin-top: 1rem;">
-          <label><strong>Tu PIN secreto de usuario:</strong></label>
-          <input type="password" id="sync-input-pin" placeholder="Crea un PIN personal (ej: miclave123)" style="font-size: 1.1rem; letter-spacing: 2px;">
-          <small style="color: var(--text-muted);">Usa este mismo PIN en todos tus dispositivos para compartir la base de datos.</small>
+        <div id="sesion-no-iniciada">
+          <div class="form-group" style="margin-top: 1rem;">
+            <label>Nombre de Usuario:</label>
+            <input type="text" id="auth-input-user" placeholder="Tu usuario (ej: juan)">
+          </div>
+          <div class="form-group">
+            <label>Contraseña:</label>
+            <input type="password" id="auth-input-pass" placeholder="Tu contraseña">
+            <small style="color: var(--text-muted);">Si es la primera vez que ingresas, tu cuenta se creará automáticamente como Administrador.</small>
+          </div>
+          <button id="btn-auth-login" class="btn-primary" style="width: 100%; margin-top: 0.5rem;">
+            Iniciar Sesión / Entrar
+          </button>
         </div>
 
-        <div style="display: flex; gap: 0.5rem; margin-top: 0.8rem; flex-wrap: wrap;">
-          <button id="btn-sync-guardar-pin" class="btn-primary" style="flex: 1; min-width: 140px;">Guardar PIN</button>
-          <button id="btn-sync-subir-nube" class="btn-secondary" style="flex: 1; min-width: 140px;">⬆️ Subir a la Nube</button>
-          <button id="btn-sync-descargar-nube" class="btn-secondary" style="flex: 1; min-width: 140px;">⬇️ Descargar de la Nube</button>
+        <div id="sesion-activa" class="hidden" style="margin-top: 1rem;">
+          <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid var(--success); padding: 0.8rem; border-radius: 8px;">
+            Sesión iniciada como: <strong id="user-display-name">---</strong> (<span id="user-display-role">---</span>)
+          </div>
+          <div style="display: flex; gap: 0.5rem; margin-top: 0.8rem; flex-wrap: wrap;">
+            <button id="btn-sync-privado-subir" class="btn-primary" style="flex: 1;">⬆️ Subir Diario & Metas</button>
+            <button id="btn-sync-privado-descargar" class="btn-secondary" style="flex: 1;">⬇️ Descargar Diario & Metas</button>
+            <button id="btn-auth-logout" class="btn-del" style="flex: 1;">Cerrar Sesión</button>
+          </div>
         </div>
 
-        <div id="sync-status-msg" style="margin-top: 0.8rem; font-size: 0.85rem; color: var(--text-muted); text-align: center;"></div>
+        <div id="sync-private-status-msg" style="margin-top: 0.8rem; font-size: 0.85rem; color: var(--text-muted); text-align: center;"></div>
       </div>
 
-      <!-- RESPALDO LOCAL MANUAL JSON -->
-      <div class="card" style="margin-top: 1.5rem;">
-        <h3>Exportar e Importar Respaldo Local</h3>
+      <!-- BLOQUE 2: CATÁLOGO COMPARTIDO (ALIMENTOS Y RECETAS) -->
+      <div class="card" style="margin-top: 1.5rem; border-color: rgba(245, 158, 11, 0.4);">
+        <h3>🌐 Catálogo Compartido de la Despensa</h3>
         <p style="color: var(--text-muted); font-size: 0.9rem;">
-          Descarga un archivo .json o copia el texto plano como respaldo físico en tu app de Notas.
+          Alimentos y recetas sincronizados automáticamente en la nube entre múltiples usuarios.
         </p>
 
         <div style="display: flex; gap: 0.5rem; margin-top: 1rem; flex-wrap: wrap;">
-          <button id="btn-generar-texto-backup" class="btn-primary" style="flex: 1; min-width: 180px;">Ver y Copiar Texto</button>
-          <button id="btn-descargar-archivo" class="btn-secondary" style="flex: 1; min-width: 180px;">Descargar .JSON</button>
+          <button id="btn-sync-catalog-descargar" class="btn-secondary" style="flex: 1;">⬇️ Actualizar Catálogo desde Nube</button>
+          <button id="btn-sync-catalog-subir" class="btn-primary" style="flex: 1; background: #f59e0b; border-color: #d97706;">⬆️ Publicar Mis Alimentos & Recetas</button>
+        </div>
+        <div id="sync-catalog-status-msg" style="margin-top: 0.8rem; font-size: 0.85rem; color: var(--text-muted); text-align: center;"></div>
+      </div>
+
+      <!-- BLOQUE 3: PANEL DE CONTROL DE USUARIOS (SOLO ADMINISTRADOR) -->
+      <div id="panel-admin-usuarios" class="card hidden" style="margin-top: 1.5rem; border-color: #10b981;">
+        <h3>👑 Panel de Administración de Usuarios</h3>
+        <p style="color: var(--text-muted); font-size: 0.9rem;">
+          Controla qué usuarios tienen permiso para agregar y modificar alimentos o recetas compartidas.
+        </p>
+
+        <div style="display: flex; justify-content: flex-end; margin: 0.5rem 0;">
+          <button id="btn-admin-refrescar-usuarios" class="btn-secondary" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;">↻ Recargar Usuarios</button>
+        </div>
+
+        <div id="contenedor-lista-usuarios-admin" style="display: flex; flex-direction: column; gap: 0.6rem;"></div>
+      </div>
+
+      <!-- BLOQUE 4: RESPALDO LOCAL MANUAL JSON -->
+      <div class="card" style="margin-top: 1.5rem;">
+        <h3>Exportar e Importar Respaldo Local (JSON)</h3>
+        <div style="display: flex; gap: 0.5rem; margin-top: 0.8rem; flex-wrap: wrap;">
+          <button id="btn-generar-texto-backup" class="btn-primary" style="flex: 1;">Ver y Copiar Texto</button>
+          <button id="btn-descargar-archivo" class="btn-secondary" style="flex: 1;">Descargar .JSON</button>
         </div>
 
         <div id="contenedor-texto-exportado" class="hidden" style="margin-top: 1rem;">
-          <label>Copia el código para guardarlo en Notas:</label>
           <textarea id="txt-backup-generado" rows="8" style="width: 100%; font-family: monospace; font-size: 0.8rem;" readonly></textarea>
           <button id="btn-seleccionar-todo" class="btn-secondary" style="margin-top: 0.5rem; width: 100%;">Seleccionar Todo</button>
         </div>
@@ -610,14 +647,8 @@
 
         <h4>Restaurar Datos Locales</h4>
         <div class="form-group">
-          <label>Pegar texto de respaldo:</label>
           <textarea id="txt-importar-manual" rows="4" placeholder="Pega el JSON aquí..."></textarea>
           <button id="btn-restaurar-texto" class="btn-secondary" style="margin-top: 0.5rem; width: 100%;">Restaurar Texto</button>
-        </div>
-
-        <div class="form-group" style="margin-top: 1rem;">
-          <label>Subir archivo de respaldo (.json):</label>
-          <input type="file" id="input-importar-backup" accept=".json">
         </div>
       </div>
     </section>
@@ -651,6 +682,6 @@
     </div>
   </div>
 
-  <script src="./app.js?v=25"></script>
+  <script src="./app.js?v=27"></script>
 </body>
 </html>
