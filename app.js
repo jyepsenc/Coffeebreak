@@ -49,24 +49,25 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-// 2. GESTIÓN INMEDIATA DE PESTAÑAS
-function activarPestanas() {
+// 2. CAMBIO DE PESTAÑAS BLINDADO POR DELEGACIÓN GLOBAL (IMPOSIBLE DE CONGELAR)
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('.tab-btn');
+  if (!btn) return;
+  e.preventDefault();
+
+  const targetId = btn.getAttribute('data-tab');
+  if (!targetId) return;
+
   const botones = document.querySelectorAll('.tab-btn');
   const contenidos = document.querySelectorAll('.tab-content');
 
-  botones.forEach(btn => {
-    btn.onclick = (e) => {
-      e.preventDefault();
-      botones.forEach(b => b.classList.remove('active'));
-      contenidos.forEach(c => c.classList.remove('active'));
+  botones.forEach(b => b.classList.remove('active'));
+  contenidos.forEach(c => c.classList.remove('active'));
 
-      btn.classList.add('active');
-      const targetId = btn.getAttribute('data-tab');
-      const targetContenido = document.getElementById(targetId);
-      if (targetContenido) targetContenido.classList.add('active');
-    };
-  });
-}
+  btn.classList.add('active');
+  const targetContenido = document.getElementById(targetId);
+  if (targetContenido) targetContenido.classList.add('active');
+});
 
 // 3. INICIALIZACIÓN BLINDADA DE INDEXEDDB
 function conectarDB() {
@@ -185,7 +186,6 @@ function verificarSesionGuardada() {
       panelAdmin.classList.add('hidden');
     }
 
-    // Auto-sincronización silenciosa en background al detectar sesión
     setTimeout(() => autoSyncCompletoSilencioso(), 400);
   } else {
     sesionUsuarioActual = null;
@@ -239,11 +239,8 @@ async function autoSyncCompletoSilencioso() {
   if (indicator) indicator.textContent = '🔄';
 
   try {
-    // 1. Descarga el catálogo global compartido más reciente
     await descargarCatalogoCompartido(false);
-    // 2. Descarga tu diario y metas personales
     await descargarDiarioPrivado(false);
-
     if (indicator) indicator.textContent = '☁️';
   } catch (err) {
     console.error('Error auto-sync:', err);
@@ -251,7 +248,6 @@ async function autoSyncCompletoSilencioso() {
   }
 }
 
-// Al volver a la app desde multitarea o desbloquear el teléfono
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {
     autoSyncCompletoSilencioso();
@@ -440,7 +436,6 @@ async function descargarCatalogoCompartido(mostrarAlerta = true) {
 safeOn('btn-sync-catalog-subir', 'click', () => subirCatalogoCompartido(true));
 safeOn('btn-sync-catalog-descargar', 'click', () => descargarCatalogoCompartido(true));
 
-// Botón de sincronización rápida en encabezado
 safeOn('sync-status-indicator', 'click', () => {
   if (!sesionUsuarioActual) return alert('Inicia sesión en la pestaña "Nube & Sesión".');
   autoSyncCompletoSilencioso();
@@ -2100,7 +2095,7 @@ safeOn('btn-calcular-sugerencias', 'click', () => {
       <h4>${sug.titulo} <small style="color:var(--text-muted)">(${sug.tipo})</small></h4>
       <div style="margin: 0.4rem 0;">${sug.descripcion}</div>
       <div style="font-size:0.85rem; margin-top:0.3rem;">
-        Aporta: <strong>${sug.kcal.toFixed(0)} kcal</strong> | 
+        Aporte: <strong>${sug.kcal.toFixed(0)} kcal</strong> | 
         <span class="${sug.excesoP > 0 ? 'alerta-exceso' : ''}">P: ${sug.p.toFixed(1)}g</span> | 
         <span class="${sug.excesoC > 0 ? 'alerta-exceso' : ''}">C: ${sug.c.toFixed(1)}g</span> | 
         <span class="${sug.excesoG > 0 ? 'alerta-exceso' : ''}">G: ${sug.g.toFixed(1)}g</span>
@@ -2119,7 +2114,7 @@ async function generarObjetoRespaldo() {
   return new Promise((resolve, reject) => {
     const tx = database.transaction(['alimentos', 'recetas', 'diario', 'config'], 'readonly');
     const respaldo = {
-      versionApp: 'CoffeeBreak_v16',
+      versionApp: 'CoffeeBreak_v17',
       fechaExportacion: new Date().toISOString(),
       alimentos: [],
       recetas: [],
@@ -2240,7 +2235,6 @@ safeOn('btn-restaurar-texto', 'click', async () => {
 });
 
 // ============================================================
-// 6. ARRANQUE ROBUSTO
+// 6. ARRANQUE
 // ============================================================
-activarPestanas();
 cargarTodo();
