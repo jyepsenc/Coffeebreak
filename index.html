@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Coffee Break - Food Metrics</title>
-  <link rel="stylesheet" href="./styles.css?v=22">
+  <link rel="stylesheet" href="./styles.css?v=23">
   <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#1e1e24">
   <link rel="apple-touch-icon" href="./icon.jpg">
@@ -16,7 +16,10 @@
       <div class="logo-box">
         <img src="./icon.jpg" alt="Logo" class="app-icon">
         <div>
-          <h1>Coffee Break</h1>
+          <div style="display: flex; align-items: center; gap: 0.4rem;">
+            <h1>Coffee Break</h1>
+            <span id="sync-status-indicator" title="Estado de sincronización" style="font-size: 0.75rem; cursor: pointer;">☁️</span>
+          </div>
           <span class="subtitle">Food Metrics</span>
         </div>
       </div>
@@ -34,7 +37,7 @@
       <button class="tab-btn" data-tab="tab-alimentos">Alimentos</button>
       <button class="tab-btn" data-tab="tab-recetas">Recetas</button>
       <button class="tab-btn" data-tab="tab-metas">Metas</button>
-      <button class="tab-btn" data-tab="tab-respaldo">Respaldo</button>
+      <button class="tab-btn" data-tab="tab-respaldo">Nube & Respaldo</button>
     </nav>
   </header>
 
@@ -75,7 +78,7 @@
           <h3 id="modal-diario-titulo">Agregar al Diario</h3>
           <div class="form-group" style="margin-top: 1rem;">
             <label>Filtrar alimento o receta:</label>
-            <input type="text" id="diario-buscador" placeholder="Buscar (con o sin tilde)...">
+            <input type="text" id="diario-buscador" placeholder="Buscar (con o sin tildes)...">
           </div>
           <div class="form-group">
             <label>Seleccionar elemento:</label>
@@ -102,7 +105,6 @@
         </p>
 
         <div style="display: flex; flex-direction: column; gap: 1rem; margin-top: 1rem; width: 100%;">
-          <!-- OBJETIVO CALÓRICO -->
           <div style="width: 100%;">
             <label style="display: block; margin-bottom: 0.3rem;"><strong>Objetivo Calórico:</strong></label>
             <select id="ai-objetivo-calorico">
@@ -116,13 +118,11 @@
             <input type="number" id="ai-kcal-manual" placeholder="Ej: 450" min="50" step="10">
           </div>
 
-          <!-- META DE PROTEÍNA ESPECÍFICA -->
           <div style="width: 100%;">
             <label style="display: block; margin-bottom: 0.3rem;"><strong>Objetivo de Proteínas (opcional):</strong></label>
             <input type="number" id="ai-prot-deseada" placeholder="Gramos de proteína mínimos (ej: 35)" min="0" step="1">
           </div>
 
-          <!-- MÉTODO DE PREPARACIÓN (COCINADO VS CRUDO/FRÍO) -->
           <div style="width: 100%;">
             <label style="display: block; margin-bottom: 0.3rem;"><strong>Método de preparación:</strong></label>
             <select id="ai-metodo-coccion">
@@ -132,7 +132,6 @@
             </select>
           </div>
 
-          <!-- TIPO DE COMIDA -->
           <div style="width: 100%;">
             <label style="display: block; margin-bottom: 0.3rem;"><strong>Tipo de comida:</strong></label>
             <select id="ai-tipo-comida">
@@ -149,7 +148,7 @@
             </select>
           </div>
 
-          <!-- MODO REPLICAR RECETA EXISTENTE -->
+          <!-- MODO REPLICAR RECETA -->
           <div style="width: 100%; background: rgba(99, 102, 241, 0.06); padding: 0.9rem; border-radius: 10px; border: 1px dashed var(--primary); box-sizing: border-box;">
             <label style="display: flex; align-items: center; gap: 0.6rem; cursor: pointer; font-weight: 600; width: 100%;">
               <input type="checkbox" id="ai-check-replicar" style="width: 18px; height: 18px; cursor: pointer; flex-shrink: 0;"> 
@@ -159,7 +158,7 @@
               <select id="ai-select-receta-plantilla" style="width: 100%;">
                 <option value="">-- Elige la receta base a replicar --</option>
               </select>
-              <small style="color: var(--text-muted);">El Chef tomará el perfil y texturas de esa receta para recrearla adaptada a las Kcal y macros elegidos.</small>
+              <small style="color: var(--text-muted);">El Chef tomará el estilo y texturas de esa receta para recrearla adaptada a las Kcal y macros elegidos.</small>
             </div>
           </div>
 
@@ -182,7 +181,7 @@
 
           <div style="width: 100%;">
             <label style="display: block; margin-bottom: 0.3rem;"><strong>Preferencia o antojo (opcional):</strong></label>
-            <input type="text" id="ai-antojo-extra" placeholder="Ej: textura cremosa, toque de canela, muy saciador...">
+            <input type="text" id="ai-antojo-extra" placeholder="Ej: textura cremosa, toque de canela...">
           </div>
 
           <button id="btn-generar-receta-ia" class="btn-primary" style="background: #6366f1; border-color: #4f46e5; margin-top: 0.2rem; width: 100%;">
@@ -191,7 +190,7 @@
           <div id="ai-status" class="hidden" style="color: var(--text-muted); font-size: 0.9rem; text-align: center; margin-top: 0.5rem;"></div>
         </div>
 
-        <!-- TARJETA RESULTADO RECETA GENERADA -->
+        <!-- TARJETA RESULTADO RECETA -->
         <div id="ai-resultado-receta" class="hidden" style="margin-top: 1.5rem; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 1rem;">
           <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem;">
             <h3 id="ai-receta-nombre" style="margin: 0; color: var(--primary);">Nombre Receta</h3>
@@ -199,7 +198,6 @@
           </div>
           <p id="ai-receta-descripcion" style="font-style: italic; color: var(--text-muted); margin: 0.5rem 0; font-size: 0.9rem;"></p>
 
-          <!-- ESCALADOR DE PORCIONES -->
           <div style="margin: 1rem 0; padding: 0.6rem; background: rgba(99, 102, 241, 0.08); border-radius: 8px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
             <span style="font-size: 0.85rem; font-weight: 600;">Escalar porciones:</span>
             <div style="display: flex; gap: 0.3rem;">
@@ -294,7 +292,6 @@
 
     <!-- ================= PESTAÑA: CALCULADORA ================= -->
     <section id="tab-calculadora" class="tab-content">
-      <!-- CALCULADORA RÁPIDA -->
       <div class="card">
         <h3>Calculadora Rápida al Gramo</h3>
         <p style="color: var(--text-muted); font-size: 0.9rem;">
@@ -326,7 +323,7 @@
         </div>
       </div>
 
-      <!-- NUEVO: CONVERSOR INVERSO (PESO COCINADO A CRUDO) -->
+      <!-- CONVERSOR INVERSO (COCINADO A CRUDO) -->
       <div class="card" style="margin-top: 1.5rem; border-color: rgba(245, 158, 11, 0.4);">
         <h3>⚖️ Conversor: Peso Cocinado a Crudo/Seco</h3>
         <p style="color: var(--text-muted); font-size: 0.9rem;">
@@ -503,7 +500,6 @@
           </ul>
         </div>
 
-        <!-- AJUSTE OPCIONAL: PESO FINAL COCINADO DE LA PREPARACIÓN -->
         <div style="background: rgba(245, 158, 11, 0.08); border: 1px dashed var(--accent-kcal); padding: 0.8rem; border-radius: 8px; margin-top: 1rem;">
           <label style="font-weight: 600; display: block; margin-bottom: 0.3rem;">
             🍳 Peso final cocinado de toda la preparación (opcional):
@@ -568,12 +564,35 @@
       </div>
     </section>
 
-    <!-- ================= PESTAÑA: RESPALDO ================= -->
+    <!-- ================= PESTAÑA: NUBE & RESPALDO ================= -->
     <section id="tab-respaldo" class="tab-content">
-      <div class="card">
-        <h3>Exportar e Importar Respaldo</h3>
+      <!-- BLOQUE DE SINCRONIZACIÓN CLOUDFLARE D1 -->
+      <div class="card" style="border-color: rgba(99, 102, 241, 0.4);">
+        <h3>☁️ Sincronización Online (Cloudflare D1)</h3>
         <p style="color: var(--text-muted); font-size: 0.9rem;">
-          Guarda o transfiere tu base de datos completa.
+          Sincroniza tus alimentos, recetas y diario en tiempo real entre tu iPhone, Mac y cualquier otro dispositivo.
+        </p>
+
+        <div class="form-group" style="margin-top: 1rem;">
+          <label><strong>Tu PIN secreto de usuario:</strong></label>
+          <input type="password" id="sync-input-pin" placeholder="Crea un PIN personal (ej: miclave123)" style="font-size: 1.1rem; letter-spacing: 2px;">
+          <small style="color: var(--text-muted);">Usa este mismo PIN en todos tus dispositivos para compartir la base de datos.</small>
+        </div>
+
+        <div style="display: flex; gap: 0.5rem; margin-top: 0.8rem; flex-wrap: wrap;">
+          <button id="btn-sync-guardar-pin" class="btn-primary" style="flex: 1; min-width: 140px;">Guardar PIN</button>
+          <button id="btn-sync-subir-nube" class="btn-secondary" style="flex: 1; min-width: 140px;">⬆️ Subir a la Nube</button>
+          <button id="btn-sync-descargar-nube" class="btn-secondary" style="flex: 1; min-width: 140px;">⬇️ Descargar de la Nube</button>
+        </div>
+
+        <div id="sync-status-msg" style="margin-top: 0.8rem; font-size: 0.85rem; color: var(--text-muted); text-align: center;"></div>
+      </div>
+
+      <!-- RESPALDO LOCAL MANUAL JSON -->
+      <div class="card" style="margin-top: 1.5rem;">
+        <h3>Exportar e Importar Respaldo Local</h3>
+        <p style="color: var(--text-muted); font-size: 0.9rem;">
+          Descarga un archivo .json o copia el texto plano como respaldo físico en tu app de Notas.
         </p>
 
         <div style="display: flex; gap: 0.5rem; margin-top: 1rem; flex-wrap: wrap;">
@@ -589,7 +608,7 @@
 
         <hr style="margin: 1.5rem 0; border: none; border-top: 1px solid var(--border);">
 
-        <h4>Restaurar Datos</h4>
+        <h4>Restaurar Datos Locales</h4>
         <div class="form-group">
           <label>Pegar texto de respaldo:</label>
           <textarea id="txt-importar-manual" rows="4" placeholder="Pega el JSON aquí..."></textarea>
@@ -632,6 +651,6 @@
     </div>
   </div>
 
-  <script src="./app.js?v=22"></script>
+  <script src="./app.js?v=23"></script>
 </body>
 </html>

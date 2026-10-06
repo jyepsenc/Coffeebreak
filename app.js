@@ -86,6 +86,8 @@ function initDB() {
   req.onsuccess = (e) => {
     db = e.target.result;
     cargarTodo();
+    // Auto-sincronización al iniciar si hay PIN guardado
+    setTimeout(() => sincronizarConLaNubeSilencioso(), 1500);
   };
 
   req.onerror = (e) => console.error('Error DB:', e.target.error);
@@ -96,6 +98,7 @@ function cargarTodo() {
   if (inputFecha) inputFecha.value = fechaSeleccionada;
 
   poblarFormMetas();
+  poblarPinGuardado();
   if (!db) return;
 
   const tx = db.transaction(['config', 'alimentos', 'recetas'], 'readonly');
@@ -131,6 +134,130 @@ function cargarTodo() {
 }
 
 /* ============================================================
+   SECCIÓN: SINCRONIZACIÓN CON CLOUDFLARE D1
+   ============================================================ */
+function obtenerPin() {
+  return localStorage.getItem('coffeebreak_user_pin') || '';
+}
+
+function poblarPinGuardado() {
+  const inputPin = document.getElementById('sync-input-pin');
+  if (inputPin) inputPin.value = obtenerPin();
+}
+
+const btnGuardarPin = document.getElementById('btn-sync-guardar-pin');
+if (btnGuardarPin) {
+  btnGuardarPin.addEventListener('click', () => {
+    const val = document.getElementById('sync-input-pin').value.trim();
+    if (!val) {
+      alert('Ingresa un PIN válido.');
+      return;
+    }
+    localStorage.setItem('coffeebreak_user_pin', val);
+    alert('✓ PIN guardado en este dispositivo.');
+    sincronizarConLaNube();
+  });
+}
+
+async function subirDatosALaNube(mostrarAlerta = true) {
+  const pin = obtenerPin();
+  if (!pin) {
+    if (mostrarAlerta) alert('Configura tu PIN en la pestaña "Nube & Respaldo" primero.');
+    return;
+  }
+
+  const indicator = document.getElementById('sync-status-indicator');
+  const statusMsg = document.getElementById('sync-status-msg');
+  if (indicator) indicator.textContent = '🔄';
+  if (statusMsg) statusMsg.textContent = 'Subiendo datos a la nube...';
+
+  try {
+    const data = await generarObjetoRespaldo();
+    const resp = await fetch(`${WORKER_CHEF_URL}/sync/push`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-User-Pin': pin
+      },
+      body: JSON.stringify({ data })
+    });
+
+    const resJson = await resp.json();
+    if (!resp.ok) throw new Error(resJson.error || `HTTP ${resp.status}`);
+
+    if (indicator) indicator.textContent = '☁️';
+    if (statusMsg) statusMsg.textContent = `✓ Sincronizado en la nube: ${new Date().toLocaleTimeString()}`;
+    if (mostrarAlerta) alert('✓ ¡Datos subidos exitosamente a Cloudflare D1!');
+  } catch (err) {
+    console.error('Error push D1:', err);
+    if (indicator) indicator.textContent = '⚠️';
+    if (statusMsg) statusMsg.textContent = `Error al subir: ${err.message}`;
+    if (mostrarAlerta) alert(`Error al sincronizar con la nube: ${err.message}`);
+  }
+}
+
+async function descargarDatosDeLaNube(mostrarAlerta = true) {
+  const pin = obtenerPin();
+  if (!pin) {
+    if (mostrarAlerta) alert('Configura tu PIN en la pestaña "Nube & Respaldo" primero.');
+    return;
+  }
+
+  const indicator = document.getElementById('sync-status-indicator');
+  const statusMsg = document.getElementById('sync-status-msg');
+  if (indicator) indicator.textContent = '🔄';
+  if (statusMsg) statusMsg.textContent = 'Consultando la nube...';
+
+  try {
+    const resp = await fetch(`${WORKER_CHEF_URL}/sync/pull`, {
+      method: 'GET',
+      headers: { 'X-User-Pin': pin }
+    });
+
+    const resJson = await resp.json();
+    if (!resp.ok) throw new Error(resJson.error || `HTTP ${resp.status}`);
+
+    if (indicator) indicator.textContent = '☁️';
+
+    if (!resJson.data) {
+      if (statusMsg) statusMsg.textContent = 'No hay datos guardados aún en la nube con este PIN.';
+      if (mostrarAlerta) alert('Aún no has subido datos para este PIN.');
+      return;
+    }
+
+    procesarEInsertarDatos(resJson.data);
+    if (statusMsg) statusMsg.textContent = `✓ Datos descargados y actualizados: ${new Date().toLocaleTimeString()}`;
+    if (mostrarAlerta) alert('✓ ¡Datos sincronizados y descargados con éxito!');
+  } catch (err) {
+    console.error('Error pull D1:', err);
+    if (indicator) indicator.textContent = '⚠️';
+    if (statusMsg) statusMsg.textContent = `Error al descargar: ${err.message}`;
+    if (mostrarAlerta) alert(`Error al consultar la nube: ${err.message}`);
+  }
+}
+
+function sincronizarConLaNube() {
+  descargarDatosDeLaNube(false).then(() => {
+    subirDatosALaNube(false);
+  });
+}
+
+function sincronizarConLaNubeSilencioso() {
+  if (obtenerPin()) {
+    descargarDatosDeLaNube(false);
+  }
+}
+
+const btnSubirNube = document.getElementById('btn-sync-subir-nube');
+if (btnSubirNube) btnSubirNube.addEventListener('click', () => subirDatosALaNube(true));
+
+const btnDescargarNube = document.getElementById('btn-sync-descargar-nube');
+if (btnDescargarNube) btnDescargarNube.addEventListener('click', () => descargarDatosDeLaNube(true));
+
+const syncIndicator = document.getElementById('sync-status-indicator');
+if (syncIndicator) syncIndicator.addEventListener('click', () => sincronizarConLaNube());
+
+/* ============================================================
    SECCIÓN: FILTROS Y SELECTORES INTELIGENTES (SIN TILDES)
    ============================================================ */
 function actualizarSelectoresGlobales() {
@@ -160,7 +287,6 @@ function poblarSelectRecetasPlantilla() {
   });
 }
 
-// Checkboxes de opciones IA
 const checkUrgente = document.getElementById('ai-check-urgente');
 const contUrgente = document.getElementById('ai-contenedor-urgente');
 if (checkUrgente && contUrgente) {
@@ -179,7 +305,6 @@ if (checkReplicar && contReplicar) {
   });
 }
 
-// Buscador en Calculadora sin distinción de tildes
 const calcFiltro = document.getElementById('calc-filtro-nombre');
 if (calcFiltro) {
   calcFiltro.addEventListener('input', () => poblarSelectCalculadora(calcFiltro.value));
@@ -208,7 +333,6 @@ function poblarSelectCalculadora(filtro = '') {
   }
 }
 
-// Buscador en Ingredientes de Recetas sin tildes
 const recetaFiltro = document.getElementById('receta-filtro-ingrediente');
 if (recetaFiltro) {
   recetaFiltro.addEventListener('input', () => poblarSelectRecetaIngredientes(recetaFiltro.value));
@@ -224,7 +348,6 @@ function poblarSelectRecetaIngredientes(filtro = '') {
   alisFiltrados.forEach(a => select.appendChild(new Option(`${a.nombre} (${a.kcal} kcal/100g)`, a.id)));
 }
 
-// Buscador en Alimentos Guardados sin tildes
 const buscadorAlisGuardados = document.getElementById('buscador-alimentos-guardados');
 if (buscadorAlisGuardados) {
   buscadorAlisGuardados.addEventListener('input', () => renderizarListaAlimentosGuardados(buscadorAlisGuardados.value));
@@ -255,7 +378,6 @@ function renderizarListaAlimentosGuardados(filtro = '') {
   });
 }
 
-// Buscador en Recetas Guardadas sin tildes
 const buscadorRecsGuardadas = document.getElementById('buscador-recetas-guardadas');
 if (buscadorRecsGuardadas) {
   buscadorRecsGuardadas.addEventListener('input', () => renderizarListaRecetasGuardadas(buscadorRecsGuardadas.value));
@@ -322,7 +444,6 @@ document.getElementById('btn-calcular-conversion').addEventListener('click', () 
   const ali = alimentosCache.find(a => a.id === aliId);
   if (!ali) return;
 
-  // Factor de rendimiento: Peso Crudo / Peso Cocido
   const factorRendimiento = crudoTotal / cocidoTotal;
   const gramosCrudosEquivalentes = gramosPlato * factorRendimiento;
 
@@ -372,6 +493,7 @@ document.getElementById('btn-agregar-conversion-diario').addEventListener('click
   tx.oncomplete = () => {
     alert(`✓ ¡Añadido a ${cat}!`);
     cargarDiario();
+    subirDatosALaNube(false);
   };
 });
 
@@ -595,6 +717,7 @@ document.getElementById('form-alimento').addEventListener('submit', (e) => {
     if (ocrContainer) ocrContainer.classList.add('hidden');
     alert(`¡"${alimento.nombre}" guardado con éxito!`);
     recargarAlimentos();
+    subirDatosALaNube(false);
   };
 });
 
@@ -610,7 +733,10 @@ window.eliminarAlimento = function(id) {
   if (!confirm('¿Eliminar este alimento?')) return;
   const tx = db.transaction(['alimentos'], 'readwrite');
   tx.objectStore('alimentos').delete(id);
-  tx.oncomplete = () => recargarAlimentos();
+  tx.oncomplete = () => {
+    recargarAlimentos();
+    subirDatosALaNube(false);
+  };
 };
 
 function calcularGramos() {
@@ -767,7 +893,6 @@ document.getElementById('btn-guardar-receta').addEventListener('click', () => {
     }
   });
 
-  // Peso cocinado opcional: si se especifica, define los macros por 100g cocidos
   const pesoCocinadoInput = parseFloat(document.getElementById('receta-peso-cocinado-final').value) || 0;
   const pesoReferencia100g = pesoCocinadoInput > 0 ? pesoCocinadoInput : totPeso;
 
@@ -797,6 +922,7 @@ document.getElementById('btn-guardar-receta').addEventListener('click', () => {
     alert(`¡Receta "${objReceta.nombre}" guardada!`);
     resetearFormularioReceta();
     recargarRecetas();
+    subirDatosALaNube(false);
   };
 });
 
@@ -816,7 +942,10 @@ window.eliminarReceta = function(id) {
   if (!confirm('¿Eliminar esta preparación?')) return;
   const tx = db.transaction(['recetas'], 'readwrite');
   tx.objectStore('recetas').delete(id);
-  tx.oncomplete = () => recargarRecetas();
+  tx.oncomplete = () => {
+    recargarRecetas();
+    subirDatosALaNube(false);
+  };
 };
 
 /* ============================================================
@@ -850,6 +979,7 @@ document.getElementById('form-metas').addEventListener('submit', (e) => {
   tx.oncomplete = () => {
     alert('Metas actualizadas.');
     cargarDiario();
+    subirDatosALaNube(false);
   };
 });
 
@@ -867,7 +997,10 @@ document.getElementById('btn-nueva-categoria').addEventListener('click', () => {
     categoriasCache.push(nom.trim());
     const tx = db.transaction(['config'], 'readwrite');
     tx.objectStore('config').put({ clave: 'categorias', valor: categoriasCache });
-    tx.oncomplete = () => cargarDiario();
+    tx.oncomplete = () => {
+      cargarDiario();
+      subirDatosALaNube(false);
+    };
   }
 });
 
@@ -986,7 +1119,6 @@ window.cerrarModalDiario = function() {
   categoriaModalDiario = null;
 };
 
-// Buscador del Diario sin tildes
 const diarioBuscador = document.getElementById('diario-buscador');
 if (diarioBuscador) {
   diarioBuscador.addEventListener('input', () => poblarSelectModalDiario(diarioBuscador.value));
@@ -1041,13 +1173,17 @@ document.getElementById('btn-confirmar-agregar-diario').addEventListener('click'
   tx.oncomplete = () => {
     cerrarModalDiario();
     cargarDiario();
+    subirDatosALaNube(false);
   };
 });
 
 window.eliminarEntradaDiario = function(id) {
   const tx = db.transaction(['diario'], 'readwrite');
   tx.objectStore('diario').delete(id);
-  tx.oncomplete = () => cargarDiario();
+  tx.oncomplete = () => {
+    cargarDiario();
+    subirDatosALaNube(false);
+  };
 };
 
 /* ============================================================
@@ -1114,7 +1250,6 @@ document.getElementById('btn-generar-receta-ia').addEventListener('click', async
   const protDeseada = parseFloat(document.getElementById('ai-prot-deseada').value) || 0;
   const antojoExtra = document.getElementById('ai-antojo-extra').value.trim();
 
-  // Instrucción de replicar receta
   let instruccionReplicar = '';
   if (document.getElementById('ai-check-replicar').checked) {
     const recId = parseInt(document.getElementById('ai-select-receta-plantilla').value, 10);
@@ -1125,7 +1260,6 @@ document.getElementById('btn-generar-receta-ia').addEventListener('click', async
     }
   }
 
-  // Modo Urgente
   let instruccionUrgente = '';
   if (document.getElementById('ai-check-urgente').checked) {
     const idUrg = parseInt(document.getElementById('ai-select-ingrediente-urgente').value, 10);
@@ -1308,6 +1442,7 @@ document.getElementById('btn-guardar-receta-ia').addEventListener('click', () =>
   tx.oncomplete = () => {
     alert(`✓ ¡"${recetaIAPendiente.nombre}" guardada en Recetas!`);
     recargarRecetas();
+    subirDatosALaNube(false);
   };
 });
 
@@ -1742,14 +1877,14 @@ document.getElementById('btn-calcular-sugerencias').addEventListener('click', ()
 });
 
 /* ============================================================
-   SECCIÓN: RESPALDO
+   SECCIÓN: RESPALDO LOCAL (EXPORTAR E IMPORTAR JSON)
    ============================================================ */
 function generarObjetoRespaldo() {
   return new Promise((resolve, reject) => {
     if (!db) return reject('Base de datos no inicializada');
     const tx = db.transaction(['alimentos', 'recetas', 'diario', 'config'], 'readonly');
     const respaldo = {
-      versionApp: 'CoffeeBreak_v11',
+      versionApp: 'CoffeeBreak_v12',
       fechaExportacion: new Date().toISOString(),
       alimentos: [],
       recetas: [],
@@ -1837,7 +1972,6 @@ function procesarEInsertarDatos(data) {
   }
 
   tx.oncomplete = () => {
-    alert('✓ ¡Datos restaurados!');
     cargarTodo();
   };
 
@@ -1855,6 +1989,8 @@ document.getElementById('btn-restaurar-texto').addEventListener('click', () => {
     const data = JSON.parse(txt);
     procesarEInsertarDatos(data);
     document.getElementById('txt-importar-manual').value = '';
+    alert('✓ ¡Datos locales restaurados!');
+    subirDatosALaNube(false);
   } catch (err) {
     console.error(err);
     alert('El texto no es un JSON válido.');
@@ -1871,6 +2007,8 @@ document.getElementById('input-importar-backup').addEventListener('change', (e) 
       const data = JSON.parse(event.target.result);
       procesarEInsertarDatos(data);
       e.target.value = '';
+      alert('✓ ¡Archivo restaurado con éxito!');
+      subirDatosALaNube(false);
     } catch (err) {
       console.error(err);
       alert('El archivo no contiene un JSON válido.');
@@ -1880,7 +2018,7 @@ document.getElementById('input-importar-backup').addEventListener('change', (e) 
   reader.readAsText(file);
 });
 
-// 5. ARRANQUE
+// 6. ARRANQUE
 window.addEventListener('DOMContentLoaded', () => {
   activarPestanas();
   initDB();
