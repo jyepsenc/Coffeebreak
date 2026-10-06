@@ -4,12 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Coffee Break - Food Metrics</title>
-  <link rel="stylesheet" href="./styles.css?v=28">
+  <link rel="stylesheet" href="./styles.css?v=29">
   <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#1e1e24">
   <link rel="apple-touch-icon" href="./icon.jpg">
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="./app.js?v=28" defer></script>
+  <script src="./app.js?v=29" defer></script>
 </head>
 <body>
   <header>
@@ -534,12 +534,94 @@
       </div>
     </section>
 
-    <!-- ================= PESTAÑA: METAS ================= -->
+    <!-- ================= PESTAÑA: METAS (CON CALCULADORA MIFFLIN-ST JEOR) ================= -->
     <section id="tab-metas" class="tab-content">
-      <div class="card">
-        <h3>Metas Nutricionales Diarias</h3>
+      <!-- CALCULADORA DE NECESIDADES ENERGÉTICAS (MIFFLIN-ST JEOR + ETA + FACTOR ACTIVIDAD) -->
+      <div class="card" style="border-color: rgba(99, 102, 241, 0.4);">
+        <h3>🧬 Calculadora de Necesidades Energéticas (Mifflin-St Jeor)</h3>
         <p style="color: var(--text-muted); font-size: 0.9rem;">
-          Define tus límites de calorías y macronutrientes diarios.
+          Determina tu Tasa Metabólica Basal (TMB), Efecto Térmico de los Alimentos (ETA) y tus macros óptimos según tu objetivo deportivo.
+        </p>
+
+        <form id="form-calc-mifflin" style="margin-top: 1rem;">
+          <div class="form-row">
+            <div class="form-group" style="flex: 1;">
+              <label>Género biológico *:</label>
+              <select id="mifflin-genero">
+                <option value="hombre">Hombre</option>
+                <option value="mujer">Mujer</option>
+              </select>
+            </div>
+            <div class="form-group" style="flex: 1;">
+              <label>Edad (años) *:</label>
+              <input type="number" id="mifflin-edad" required placeholder="Ej: 28" min="14" max="100">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group" style="flex: 1;">
+              <label>Peso corporal (kg) *:</label>
+              <input type="number" id="mifflin-peso" required step="0.1" placeholder="Ej: 74.5" min="30" max="250">
+            </div>
+            <div class="form-group" style="flex: 1;">
+              <label>Estatura / Talla (cm) *:</label>
+              <input type="number" id="mifflin-talla" required placeholder="Ej: 176" min="100" max="230">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Nivel de Actividad Física Semanal (Factor de Actividad) *:</label>
+            <select id="mifflin-actividad">
+              <option value="1.2">Sedentario (Trabajo de escritorio, poco o nada de ejercicio)</option>
+              <option value="1.375" selected>Ligero (Entrenamiento suave 1 a 3 días/semana)</option>
+              <option value="1.55">Moderado (Entrenamiento habitual 3 a 5 días/semana)</option>
+              <option value="1.725">Intenso (Entrenamiento fuerte 6 a 7 días/semana)</option>
+              <option value="1.9">Muy Intenso (Doble sesión diaria o trabajo físico demandante)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>Objetivo Nutricional / Composición Corporal *:</label>
+            <select id="mifflin-objetivo">
+              <option value="mantenimiento">Mantenimiento (Conservar peso y recomposición)</option>
+              <option value="deficit_moderado">Pérdida de Grasa - Déficit Moderado (-20% Kcal)</option>
+              <option value="deficit_agresivo">Pérdida de Grasa - Déficit Agresivo (-25% Kcal)</option>
+              <option value="superavit_controlado">Ganancia Muscular - Superávit Limpio (+10% Kcal)</option>
+              <option value="superavit_fuerte">Ganancia Muscular - Superávit Volumen (+15% Kcal)</option>
+            </select>
+          </div>
+
+          <button type="submit" class="btn-primary" style="width: 100%; margin-top: 0.5rem; background: #6366f1;">
+            ⚡ Calcular Necesidades y Sugerir Macros
+          </button>
+        </form>
+
+        <div id="resultado-mifflin" class="hidden" style="margin-top: 1.2rem; background: rgba(99, 102, 241, 0.08); border: 1px solid var(--primary); padding: 1rem; border-radius: 10px;">
+          <h4 style="margin: 0 0 0.5rem 0; color: var(--primary);">Desglose Metabólico:</h4>
+          <div style="font-size: 0.88rem; line-height: 1.5; color: var(--text-muted);">
+            • <strong>Tasa Metabólica Basal (TMB):</strong> <span id="mifflin-res-tmb" style="color:var(--text); font-weight:bold;">0</span> kcal<br>
+            • <strong>Gasto Total con Actividad + ETA (10%):</strong> <span id="mifflin-res-get" style="color:var(--text); font-weight:bold;">0</span> kcal<br>
+            • <strong>Objetivo Calórico Calculado:</strong> <span id="mifflin-res-target" style="color:var(--accent-kcal); font-weight:800; font-size:1.05rem;">0</span> kcal
+          </div>
+
+          <h4 style="margin: 0.9rem 0 0.4rem 0;">Macros Óptimos Sugeridos:</h4>
+          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            <div class="macro-badge"><strong>Prot:</strong> <span id="mifflin-sug-prot">0</span>g <small>(~2.0 g/kg)</small></div>
+            <div class="macro-badge"><strong>Grasas:</strong> <span id="mifflin-sug-grasas">0</span>g <small>(~0.9 g/kg)</small></div>
+            <div class="macro-badge"><strong>Carbos:</strong> <span id="mifflin-sug-carbs">0</span>g <small>(Remanente)</small></div>
+          </div>
+
+          <button id="btn-aplicar-metas-mifflin" class="btn-primary" style="width: 100%; margin-top: 1rem; background: #10b981; border-color: #059669;">
+            ✓ Trasladar estos valores a mis Metas Diarias (puedes ajustarlos abajo)
+          </button>
+        </div>
+      </div>
+
+      <!-- FORMULARIO DE METAS DIARIAS (EDITABLE LIBREMENTE) -->
+      <div class="card" style="margin-top: 1.5rem;">
+        <h3>Tus Metas Nutricionales Oficiales (Editables)</h3>
+        <p style="color: var(--text-muted); font-size: 0.9rem;">
+          Estos son los límites diarios que controlan los marcadores de tu Diario. Modifícalos a tu gusto y presiona Actualizar.
         </p>
 
         <form id="form-metas" style="margin-top: 1rem;">
@@ -560,7 +642,7 @@
             <input type="number" id="meta-grasas" required min="0" step="1">
           </div>
 
-          <button type="submit" class="btn-primary" style="width: 100%; margin-top: 1rem;">Actualizar Metas</button>
+          <button type="submit" class="btn-primary" style="width: 100%; margin-top: 1rem;">Guardar y Actualizar Metas</button>
         </form>
       </div>
     </section>
