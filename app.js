@@ -244,7 +244,7 @@ async function autoSyncCompletoSilencioso() {
   if (!sesionUsuarioActual || estaSincronizando) return;
 
   const ahora = Date.now();
-  if (ahora - ultimaSincronizacionTimestamp < 15000) return; // Mínimo 15 segundos entre sincronizaciones
+  if (ahora - ultimaSincronizacionTimestamp < 15000) return;
 
   estaSincronizando = true;
   const indicator = document.getElementById('sync-status-indicator');
@@ -453,7 +453,7 @@ safeOn('btn-sync-catalog-descargar', 'click', () => descargarCatalogoCompartido(
 
 safeOn('sync-status-indicator', 'click', () => {
   if (!sesionUsuarioActual) return alert('Inicia sesión en la pestaña "Nube & Sesión".');
-  ultimaSincronizacionTimestamp = 0; // Permitir sync manual inmediato
+  ultimaSincronizacionTimestamp = 0;
   autoSyncCompletoSilencioso();
 });
 
@@ -1233,42 +1233,54 @@ safeOn('form-calc-mifflin', 'submit', (e) => {
   const talla = parseFloat(document.getElementById('mifflin-talla')?.value) || 0;
   const factorActividad = parseFloat(document.getElementById('mifflin-actividad')?.value) || 1.375;
   const objetivo = document.getElementById('mifflin-objetivo')?.value || 'mantenimiento';
+  const ratioSeleccionado = document.getElementById('mifflin-ratio-prot')?.value || 'auto';
 
   if (peso <= 0 || talla <= 0 || edad <= 0) {
     alert('Ingresa edad, peso y estatura válidos.');
     return;
   }
 
+  // Fórmula Mifflin-St Jeor para TMB
   let tmb = (10 * peso) + (6.25 * talla) - (5 * edad);
   if (genero === 'hombre') tmb += 5;
   else tmb -= 161;
 
+  // Gasto energético total con Factor de Actividad y Efecto Térmico de Alimentos (ETA ~10%)
   const gastoActividad = tmb * factorActividad;
   const gastoTotalConEta = gastoActividad * 1.10;
 
+  // Ajuste calórico por objetivo
   let caloriasObjetivo = gastoTotalConEta;
   let proteinaPorKg = 2.0;
 
   if (objetivo === 'deficit_moderado') {
-    caloriasObjetivo = gastoTotalConEta * 0.80;
-    proteinaPorKg = 2.2;
+    caloriasObjetivo = gastoTotalConEta * 0.80; // -20%
+    proteinaPorKg = 2.0;
   } else if (objetivo === 'deficit_agresivo') {
-    caloriasObjetivo = gastoTotalConEta * 0.75;
-    proteinaPorKg = 2.3;
+    caloriasObjetivo = gastoTotalConEta * 0.75; // -25%
+    proteinaPorKg = 2.2;
   } else if (objetivo === 'superavit_controlado') {
-    caloriasObjetivo = gastoTotalConEta * 1.10;
-    proteinaPorKg = 1.9;
+    caloriasObjetivo = gastoTotalConEta * 1.10; // +10%
+    proteinaPorKg = 1.8;
   } else if (objetivo === 'superavit_fuerte') {
-    caloriasObjetivo = gastoTotalConEta * 1.15;
-    proteinaPorKg = 1.9;
+    caloriasObjetivo = gastoTotalConEta * 1.15; // +15%
+    proteinaPorKg = 1.8;
   }
 
+  // Si el usuario seleccionó un ratio proteico específico, lo respetamos estrictamente
+  if (ratioSeleccionado !== 'auto') {
+    proteinaPorKg = parseFloat(ratioSeleccionado);
+  }
+
+  // Cálculo de Macronutrientes
   const gramosProteina = Math.round(peso * proteinaPorKg);
   const kcalProteina = gramosProteina * 4;
 
+  // Grasas hormonales esenciales (~0.9 g/kg)
   const gramosGrasas = Math.round(peso * 0.9);
   const kcalGrasas = gramosGrasas * 9;
 
+  // Carbohidratos: Remanente calórico para rendimiento y glucógeno
   let kcalCarbos = caloriasObjetivo - (kcalProteina + kcalGrasas);
   if (kcalCarbos < 0) kcalCarbos = 0;
   const gramosCarbos = Math.round(kcalCarbos / 4);
@@ -1284,9 +1296,10 @@ safeOn('form-calc-mifflin', 'submit', (e) => {
   document.getElementById('mifflin-res-get').textContent = Math.round(gastoTotalConEta);
   document.getElementById('mifflin-res-target').textContent = Math.round(caloriasObjetivo);
 
-  document.getElementById('mifflin-sug-prot').textContent = gramosProteina;
-  document.getElementById('mifflin-sug-grasas').textContent = gramosGrasas;
-  document.getElementById('mifflin-sug-carbs').textContent = gramosCarbos;
+  // Etiqueta dinámica transparente con los gramos y el ratio real aplicado
+  document.getElementById('mifflin-sug-prot').textContent = `${gramosProteina}g (${proteinaPorKg.toFixed(1)} g/kg)`;
+  document.getElementById('mifflin-sug-grasas').textContent = `${gramosGrasas}g (0.9 g/kg)`;
+  document.getElementById('mifflin-sug-carbs').textContent = `${gramosCarbos}g`;
 
   const boxRes = document.getElementById('resultado-mifflin');
   if (boxRes) {
@@ -1305,7 +1318,7 @@ safeOn('btn-aplicar-metas-mifflin', 'click', () => {
 
   const formMetas = document.getElementById('form-metas');
   if (formMetas) formMetas.scrollIntoView({ behavior: 'smooth' });
-  alert('✓ Valores trasladados al formulario. Puedes modificarlos manualmente o presionar "Guardar y Actualizar Metas".');
+  alert('✓ Valores trasladados al formulario. Puedes modificarlos libremente antes de guardar.');
 });
 
 safeOn('form-metas', 'submit', async (e) => {
@@ -2214,7 +2227,7 @@ async function generarObjetoRespaldo() {
   return new Promise((resolve, reject) => {
     const tx = database.transaction(['alimentos', 'recetas', 'diario', 'config'], 'readonly');
     const respaldo = {
-      versionApp: 'CoffeeBreak_v20',
+      versionApp: 'CoffeeBreak_v22',
       fechaExportacion: new Date().toISOString(),
       alimentos: [],
       recetas: [],
@@ -2338,5 +2351,4 @@ safeOn('btn-restaurar-texto', 'click', async () => {
 // 6. ARRANQUE
 // ============================================================
 cargarTodo();
-// Auto-sincronización inicial única con delay seguro de 1 segundo
 setTimeout(() => autoSyncCompletoSilencioso(), 1000);
