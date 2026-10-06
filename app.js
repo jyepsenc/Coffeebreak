@@ -1,6 +1,6 @@
 // Base de Datos IndexedDB - Coffee Break Food Metrics
 const DB_NAME = 'NutriAppDB';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 // URL de tu Proxy Seguro en Cloudflare Workers
 const WORKER_CHEF_URL = 'https://coffiachef.jyepsenc.workers.dev';
@@ -23,6 +23,17 @@ let recetaIAPendiente = null;
 let recetaIABaseOriginal = null;
 let factorEscalaActual = 1;
 let pasoCocinaActual = 0;
+
+// Estado temporal para Conversor Inverso
+let conversionCalculadaTemp = null;
+
+// ============================================================
+// UTILIDAD: NORMALIZADOR INSENSIBLE A TILDES
+// ============================================================
+function normalizarTexto(txt) {
+  if (!txt) return '';
+  return txt.toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+}
 
 // 1. REGISTRO DE SERVICE WORKER PARA PWA
 if ('serviceWorker' in navigator) {
@@ -120,13 +131,15 @@ function cargarTodo() {
 }
 
 /* ============================================================
-   SECCIÓN: FILTROS Y SELECTORES INTELIGENTES
+   SECCIÓN: FILTROS Y SELECTORES INTELIGENTES (SIN TILDES)
    ============================================================ */
 function actualizarSelectoresGlobales() {
   poblarSelectCalculadora();
   poblarSelectRecetaIngredientes();
   poblarSelectMezclador();
   poblarSelectIngredienteUrgente();
+  poblarSelectRecetasPlantilla();
+  poblarSelectConversorAlimentos();
 }
 
 function poblarSelectIngredienteUrgente() {
@@ -138,6 +151,16 @@ function poblarSelectIngredienteUrgente() {
   });
 }
 
+function poblarSelectRecetasPlantilla() {
+  const sel = document.getElementById('ai-select-receta-plantilla');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">-- Elige la receta base a replicar --</option>';
+  recetasCache.forEach(r => {
+    sel.appendChild(new Option(`${r.nombre} (${r.kcalPor100g.toFixed(0)} kcal/100g)`, r.id));
+  });
+}
+
+// Checkboxes de opciones IA
 const checkUrgente = document.getElementById('ai-check-urgente');
 const contUrgente = document.getElementById('ai-contenedor-urgente');
 if (checkUrgente && contUrgente) {
@@ -147,17 +170,28 @@ if (checkUrgente && contUrgente) {
   });
 }
 
+const checkReplicar = document.getElementById('ai-check-replicar');
+const contReplicar = document.getElementById('ai-contenedor-replicar');
+if (checkReplicar && contReplicar) {
+  checkReplicar.addEventListener('change', () => {
+    if (checkReplicar.checked) contReplicar.classList.remove('hidden');
+    else contReplicar.classList.add('hidden');
+  });
+}
+
+// Buscador en Calculadora sin distinción de tildes
 const calcFiltro = document.getElementById('calc-filtro-nombre');
 if (calcFiltro) {
-  calcFiltro.addEventListener('input', () => poblarSelectCalculadora(calcFiltro.value.trim().toLowerCase()));
+  calcFiltro.addEventListener('input', () => poblarSelectCalculadora(calcFiltro.value));
 }
 
 function poblarSelectCalculadora(filtro = '') {
   const select = document.getElementById('select-alimento');
   if (!select) return;
   select.innerHTML = '<option value="">-- Elige un elemento --</option>';
+  const fNorm = normalizarTexto(filtro);
 
-  const alisFiltrados = alimentosCache.filter(a => a.nombre.toLowerCase().includes(filtro));
+  const alisFiltrados = alimentosCache.filter(a => normalizarTexto(a.nombre).includes(fNorm));
   if (alisFiltrados.length > 0) {
     const gAli = document.createElement('optgroup');
     gAli.label = 'Alimentos Individuales';
@@ -165,7 +199,7 @@ function poblarSelectCalculadora(filtro = '') {
     select.appendChild(gAli);
   }
 
-  const recsFiltradas = recetasCache.filter(r => r.nombre.toLowerCase().includes(filtro));
+  const recsFiltradas = recetasCache.filter(r => normalizarTexto(r.nombre).includes(fNorm));
   if (recsFiltradas.length > 0) {
     const gRec = document.createElement('optgroup');
     gRec.label = 'Recetas Compuestas';
@@ -174,31 +208,35 @@ function poblarSelectCalculadora(filtro = '') {
   }
 }
 
+// Buscador en Ingredientes de Recetas sin tildes
 const recetaFiltro = document.getElementById('receta-filtro-ingrediente');
 if (recetaFiltro) {
-  recetaFiltro.addEventListener('input', () => poblarSelectRecetaIngredientes(recetaFiltro.value.trim().toLowerCase()));
+  recetaFiltro.addEventListener('input', () => poblarSelectRecetaIngredientes(recetaFiltro.value));
 }
 
 function poblarSelectRecetaIngredientes(filtro = '') {
   const select = document.getElementById('receta-select-alimento');
   if (!select) return;
   select.innerHTML = '<option value="">-- Elige un alimento base --</option>';
+  const fNorm = normalizarTexto(filtro);
 
-  const alisFiltrados = alimentosCache.filter(a => a.nombre.toLowerCase().includes(filtro));
+  const alisFiltrados = alimentosCache.filter(a => normalizarTexto(a.nombre).includes(fNorm));
   alisFiltrados.forEach(a => select.appendChild(new Option(`${a.nombre} (${a.kcal} kcal/100g)`, a.id)));
 }
 
+// Buscador en Alimentos Guardados sin tildes
 const buscadorAlisGuardados = document.getElementById('buscador-alimentos-guardados');
 if (buscadorAlisGuardados) {
-  buscadorAlisGuardados.addEventListener('input', () => renderizarListaAlimentosGuardados(buscadorAlisGuardados.value.trim().toLowerCase()));
+  buscadorAlisGuardados.addEventListener('input', () => renderizarListaAlimentosGuardados(buscadorAlisGuardados.value));
 }
 
 function renderizarListaAlimentosGuardados(filtro = '') {
   const lista = document.getElementById('lista-alimentos');
   if (!lista) return;
   lista.innerHTML = '';
+  const fNorm = normalizarTexto(filtro);
 
-  const filtrados = alimentosCache.filter(a => a.nombre.toLowerCase().includes(filtro) || (a.marca && a.marca.toLowerCase().includes(filtro)));
+  const filtrados = alimentosCache.filter(a => normalizarTexto(a.nombre).includes(fNorm) || (a.marca && normalizarTexto(a.marca).includes(fNorm)));
   if (filtrados.length === 0) {
     lista.innerHTML = '<li style="color: var(--text-muted);">No se encontraron alimentos.</li>';
     return;
@@ -217,17 +255,19 @@ function renderizarListaAlimentosGuardados(filtro = '') {
   });
 }
 
+// Buscador en Recetas Guardadas sin tildes
 const buscadorRecsGuardadas = document.getElementById('buscador-recetas-guardadas');
 if (buscadorRecsGuardadas) {
-  buscadorRecsGuardadas.addEventListener('input', () => renderizarListaRecetasGuardadas(buscadorRecsGuardadas.value.trim().toLowerCase()));
+  buscadorRecsGuardadas.addEventListener('input', () => renderizarListaRecetasGuardadas(buscadorRecsGuardadas.value));
 }
 
 function renderizarListaRecetasGuardadas(filtro = '') {
   const lista = document.getElementById('lista-recetas');
   if (!lista) return;
   lista.innerHTML = '';
+  const fNorm = normalizarTexto(filtro);
 
-  const filtradas = recetasCache.filter(r => r.nombre.toLowerCase().includes(filtro));
+  const filtradas = recetasCache.filter(r => normalizarTexto(r.nombre).includes(fNorm));
   if (filtradas.length === 0) {
     lista.innerHTML = '<li style="color: var(--text-muted);">No se encontraron recetas.</li>';
     return;
@@ -238,7 +278,7 @@ function renderizarListaRecetasGuardadas(filtro = '') {
     li.innerHTML = `
       <div>
         <strong>${r.nombre}</strong><br>
-        <small style="color: var(--text-muted);">${r.kcalPor100g.toFixed(1)} kcal/100g (Total: ${r.pesoTotal}g - ${r.kcalTotal.toFixed(0)} kcal)</small>
+        <small style="color: var(--text-muted);">${r.kcalPor100g.toFixed(1)} kcal/100g (Total: ${r.pesoTotal}g ${r.pesoCocinadoFinal ? `[Cocido: ${r.pesoCocinadoFinal}g]` : ''} - ${r.kcalTotal.toFixed(0)} kcal)</small>
       </div>
       <div style="display: flex; gap: 0.4rem;">
         <button class="btn-secondary" onclick="cargarRecetaParaEditar(${r.id})">Editar</button>
@@ -248,6 +288,92 @@ function renderizarListaRecetasGuardadas(filtro = '') {
     lista.appendChild(li);
   });
 }
+
+/* ============================================================
+   SECCIÓN: CONVERSOR INVERSO (PESO COCINADO A CRUDO)
+   ============================================================ */
+const convFiltroAli = document.getElementById('conv-filtro-alimento');
+if (convFiltroAli) {
+  convFiltroAli.addEventListener('input', () => poblarSelectConversorAlimentos(convFiltroAli.value));
+}
+
+function poblarSelectConversorAlimentos(filtro = '') {
+  const sel = document.getElementById('conv-select-alimento');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">-- Selecciona alimento base crudo --</option>';
+  const fNorm = normalizarTexto(filtro);
+
+  const filtrados = alimentosCache.filter(a => normalizarTexto(a.nombre).includes(fNorm));
+  filtrados.forEach(a => sel.appendChild(new Option(`${a.nombre} (${a.kcal} kcal/100g en crudo)`, a.id)));
+}
+
+document.getElementById('btn-calcular-conversion').addEventListener('click', () => {
+  const aliId = parseInt(document.getElementById('conv-select-alimento').value, 10);
+  const crudoTotal = parseFloat(document.getElementById('conv-peso-crudo-total').value) || 0;
+  const cocidoTotal = parseFloat(document.getElementById('conv-peso-cocido-total').value) || 0;
+  const gramosPlato = parseFloat(document.getElementById('conv-gramos-plato').value) || 0;
+  const boxRes = document.getElementById('resultado-conversion');
+
+  if (!aliId || crudoTotal <= 0 || cocidoTotal <= 0 || gramosPlato <= 0) {
+    alert('Por favor selecciona el alimento e ingresa el peso crudo total, el cocido total y los gramos que vas a servirte.');
+    return;
+  }
+
+  const ali = alimentosCache.find(a => a.id === aliId);
+  if (!ali) return;
+
+  // Factor de rendimiento: Peso Crudo / Peso Cocido
+  const factorRendimiento = crudoTotal / cocidoTotal;
+  const gramosCrudosEquivalentes = gramosPlato * factorRendimiento;
+
+  const f = gramosCrudosEquivalentes / 100;
+  const kcalAporte = ali.kcal * f;
+  const protAporte = ali.proteinas * f;
+  const carbsAporte = ali.carbohidratos * f;
+  const grasasAporte = ali.grasas * f;
+
+  conversionCalculadaTemp = {
+    nombre: `${ali.nombre} (cocido)`,
+    gramosPlato: gramosPlato,
+    gramosCrudos: gramosCrudosEquivalentes,
+    kcal: kcalAporte,
+    proteinas: protAporte,
+    carbohidratos: carbsAporte,
+    grasas: grasasAporte
+  };
+
+  document.getElementById('conv-res-crudo').textContent = gramosCrudosEquivalentes.toFixed(1);
+  document.getElementById('conv-res-kcal').textContent = kcalAporte.toFixed(1);
+  document.getElementById('conv-res-prot').textContent = protAporte.toFixed(1);
+  document.getElementById('conv-res-carbs').textContent = carbsAporte.toFixed(1);
+  document.getElementById('conv-res-grasas').textContent = grasasAporte.toFixed(1);
+
+  boxRes.classList.remove('hidden');
+});
+
+document.getElementById('btn-agregar-conversion-diario').addEventListener('click', () => {
+  if (!conversionCalculadaTemp) return;
+  const cat = prompt(`¿A qué categoría agregarlo? (${categoriasCache.join(', ')}):`, categoriasCache[0]);
+  if (!cat || !categoriasCache.includes(cat.trim())) return;
+
+  const entrada = {
+    fecha: fechaSeleccionada,
+    categoria: cat.trim(),
+    nombre: `${conversionCalculadaTemp.nombre} [${conversionCalculadaTemp.gramosPlato}g coc.]`,
+    gramos: conversionCalculadaTemp.gramosPlato,
+    kcal: conversionCalculadaTemp.kcal,
+    proteinas: conversionCalculadaTemp.proteinas,
+    carbohidratos: conversionCalculadaTemp.carbohidratos,
+    grasas: conversionCalculadaTemp.grasas
+  };
+
+  const tx = db.transaction(['diario'], 'readwrite');
+  tx.objectStore('diario').add(entrada);
+  tx.oncomplete = () => {
+    alert(`✓ ¡Añadido a ${cat}!`);
+    cargarDiario();
+  };
+});
 
 /* ============================================================
    SECCIÓN: OCR
@@ -376,7 +502,7 @@ function parsearTablaNutricionalRobusto(texto) {
 
   for (let i = 0; i < lineas.length; i++) {
     const l = lineas[i];
-    const lLower = l.toLowerCase();
+    const lLower = normalizarTexto(l);
 
     if ((lLower.includes('energ') || lLower.includes('kcal') || lLower.includes('calor')) && valores.kcal === null) {
       const nums = extraerNumerosConCoherencia(l, 'kcal');
@@ -390,7 +516,7 @@ function parsearTablaNutricionalRobusto(texto) {
     } else if ((lLower.includes('grasa total') || lLower.includes('grasas totales') || lLower.includes('lipidos') || (lLower.includes('grasa') && !lLower.includes('sat') && !lLower.includes('mono') && !lLower.includes('trans'))) && valores.grasas === null) {
       const nums = extraerNumerosConCoherencia(l, 'macro_comun');
       if (nums.length > 0) valores.grasas = nums[0];
-    } else if (lLower.includes('azuc') || lLower.includes('azúc')) {
+    } else if (lLower.includes('azuc')) {
       const nums = extraerNumerosConCoherencia(l, 'macro_comun');
       if (nums.length > 0 && valores.azucares === null) valores.azucares = nums[0];
     } else if (lLower.includes('fibra')) {
@@ -528,7 +654,7 @@ document.getElementById('select-alimento').addEventListener('change', calcularGr
 document.getElementById('input-gramos').addEventListener('input', calcularGramos);
 
 /* ============================================================
-   SECCIÓN: RECETAS COMPUESTAS
+   SECCIÓN: RECETAS COMPUESTAS (CON AJUSTE DE PESO COCINADO)
    ============================================================ */
 document.getElementById('btn-agregar-ingrediente').addEventListener('click', () => {
   const aliId = parseInt(document.getElementById('receta-select-alimento').value, 10);
@@ -596,6 +722,7 @@ window.cargarRecetaParaEditar = function(id) {
   recetaEditandoId = rec.id;
   document.getElementById('titulo-panel-receta').textContent = `Editando: ${rec.nombre}`;
   document.getElementById('receta-nombre').value = rec.nombre;
+  document.getElementById('receta-peso-cocinado-final').value = rec.pesoCocinadoFinal || '';
   document.getElementById('btn-guardar-receta').textContent = 'Guardar Cambios';
   document.getElementById('btn-cancelar-edicion-receta').classList.remove('hidden');
 
@@ -614,6 +741,7 @@ function resetearFormularioReceta() {
   recetaBorrador = [];
   document.getElementById('titulo-panel-receta').textContent = 'Crear Receta Compuesta';
   document.getElementById('receta-nombre').value = '';
+  document.getElementById('receta-peso-cocinado-final').value = '';
   document.getElementById('btn-guardar-receta').textContent = 'Guardar Receta';
   document.getElementById('btn-cancelar-edicion-receta').classList.add('hidden');
   actualizarVistaBorradorReceta();
@@ -639,15 +767,20 @@ document.getElementById('btn-guardar-receta').addEventListener('click', () => {
     }
   });
 
+  // Peso cocinado opcional: si se especifica, define los macros por 100g cocidos
+  const pesoCocinadoInput = parseFloat(document.getElementById('receta-peso-cocinado-final').value) || 0;
+  const pesoReferencia100g = pesoCocinadoInput > 0 ? pesoCocinadoInput : totPeso;
+
   const objReceta = {
     nombre: nombre,
     ingredientes: [...recetaBorrador],
     pesoTotal: totPeso,
+    pesoCocinadoFinal: pesoCocinadoInput > 0 ? pesoCocinadoInput : null,
     kcalTotal: totKcal,
-    kcalPor100g: totPeso > 0 ? (totKcal / totPeso) * 100 : 0,
-    protPor100g: totPeso > 0 ? (totProt / totPeso) * 100 : 0,
-    carbsPor100g: totPeso > 0 ? (totCarbs / totPeso) * 100 : 0,
-    grasasPor100g: totPeso > 0 ? (totGrasas / totPeso) * 100 : 0
+    kcalPor100g: pesoReferencia100g > 0 ? (totKcal / pesoReferencia100g) * 100 : 0,
+    protPor100g: pesoReferencia100g > 0 ? (totProt / pesoReferencia100g) * 100 : 0,
+    carbsPor100g: pesoReferencia100g > 0 ? (totCarbs / pesoReferencia100g) * 100 : 0,
+    grasasPor100g: pesoReferencia100g > 0 ? (totGrasas / pesoReferencia100g) * 100 : 0
   };
 
   const tx = db.transaction(['recetas'], 'readwrite');
@@ -853,19 +986,21 @@ window.cerrarModalDiario = function() {
   categoriaModalDiario = null;
 };
 
+// Buscador del Diario sin tildes
 const diarioBuscador = document.getElementById('diario-buscador');
 if (diarioBuscador) {
-  diarioBuscador.addEventListener('input', () => poblarSelectModalDiario(diarioBuscador.value.trim().toLowerCase()));
+  diarioBuscador.addEventListener('input', () => poblarSelectModalDiario(diarioBuscador.value));
 }
 
 function poblarSelectModalDiario(filtro = '') {
   const sel = document.getElementById('diario-select-item');
   sel.innerHTML = '';
+  const fNorm = normalizarTexto(filtro);
 
-  const alis = alimentosCache.filter(a => a.nombre.toLowerCase().includes(filtro));
+  const alis = alimentosCache.filter(a => normalizarTexto(a.nombre).includes(fNorm));
   alis.forEach(a => sel.appendChild(new Option(`${a.nombre} (${a.kcal} kcal/100g)`, `ali_${a.id}`)));
 
-  const recs = recetasCache.filter(r => r.nombre.toLowerCase().includes(filtro));
+  const recs = recetasCache.filter(r => normalizarTexto(r.nombre).includes(fNorm));
   recs.forEach(r => sel.appendChild(new Option(`${r.nombre} [Receta] (${r.kcalPor100g.toFixed(1)} kcal/100g)`, `rec_${r.id}`)));
 }
 
@@ -916,7 +1051,7 @@ window.eliminarEntradaDiario = function(id) {
 };
 
 /* ============================================================
-   SECCIÓN: CHEF IA CON GEMINI + ESCALADO + GASTAR INGREDIENTE
+   SECCIÓN: CHEF IA CON GEMINI + NUEVAS REGLAS TÉCNICAS
    ============================================================ */
 const selectAiObjetivo = document.getElementById('ai-objetivo-calorico');
 const contAiKcalManual = document.getElementById('contenedor-ai-kcal-manual');
@@ -929,6 +1064,30 @@ if (selectAiObjetivo) {
       contAiKcalManual.classList.add('hidden');
     }
   });
+}
+
+async function fetchConReintento(url, opciones, maxReintentos = 3) {
+  const aiStatus = document.getElementById('ai-status');
+  for (let intento = 1; intento <= maxReintentos; intento++) {
+    try {
+      const resp = await fetch(url, opciones);
+      const data = await resp.json();
+
+      if (resp.ok) return data;
+
+      if ((resp.status === 503 || resp.status === 429) && intento < maxReintentos) {
+        aiStatus.textContent = `Servidores con alta demanda, reintentando automáticamente (${intento}/${maxReintentos})...`;
+        await new Promise(r => setTimeout(r, 2000 * intento));
+        continue;
+      }
+
+      const detalle = data?.error?.message || `Código ${resp.status}`;
+      throw new Error(detalle);
+    } catch (err) {
+      if (intento === maxReintentos) throw err;
+      await new Promise(r => setTimeout(r, 2000 * intento));
+    }
+  }
 }
 
 document.getElementById('btn-generar-receta-ia').addEventListener('click', async () => {
@@ -946,12 +1105,25 @@ document.getElementById('btn-generar-receta-ia').addEventListener('click', async
   } else {
     metaKcal = rest.kcal;
     if (metaKcal <= 20) {
-      return alert('Ya has alcanzado tus Kcal restantes del día. Cambia la opción a "Fijar Kcal manuales" para pedir una receta independiente.');
+      return alert('Ya has alcanzado tus Kcal restantes del día. Cambia la opción a "Fijar Kcal manuales".');
     }
   }
 
   const tipoComida = document.getElementById('ai-tipo-comida').value;
+  const metodoCoccion = document.getElementById('ai-metodo-coccion').value;
+  const protDeseada = parseFloat(document.getElementById('ai-prot-deseada').value) || 0;
   const antojoExtra = document.getElementById('ai-antojo-extra').value.trim();
+
+  // Instrucción de replicar receta
+  let instruccionReplicar = '';
+  if (document.getElementById('ai-check-replicar').checked) {
+    const recId = parseInt(document.getElementById('ai-select-receta-plantilla').value, 10);
+    const recBase = recetasCache.find(r => r.id === recId);
+    if (recBase) {
+      const ingBaseTexto = (recBase.ingredientes || []).map(i => `${i.nombre} (${i.gramos}g)`).join(', ');
+      instruccionReplicar = `INSTRUCCIÓN DE REPLICACIÓN TÉCNICA: Debes inspirarte directamente en la receta "${recBase.nombre}" (compuesta por: ${ingBaseTexto}). Emula su estilo, texturas y balance gustativo, pero adaptándola para que cumpla con los macronutrientes solicitados y el método pedido, utilizando alimentos disponibles en la despensa.`;
+    }
+  }
 
   // Modo Urgente
   let instruccionUrgente = '';
@@ -972,41 +1144,48 @@ document.getElementById('btn-generar-receta-ia').addEventListener('click', async
 
   const aiStatus = document.getElementById('ai-status');
   const aiBox = document.getElementById('ai-resultado-receta');
-  aiStatus.textContent = 'El Chef Gemini está diseñando tu receta culinaria...';
+  aiStatus.textContent = 'El Chef Gemini está diseñando tu receta culinaria con técnica profesional...';
   aiStatus.classList.remove('hidden');
   aiBox.classList.add('hidden');
 
   const promptSistema = `
-Actúa como un Chef y Nutricionista deportivo de alta precisión.
-Tu misión es diseñar una receta deliciosa, coherente y con verdadero sentido gastronómico usando EXCLUSIVAMENTE alimentos de esta despensa:
+Actúa como un Chef Ejecutivo y Nutricionista de alta cocina y nutrición deportiva.
+Tu misión es diseñar una receta coherente, deliciosa y viable inspirada EXCLUSIVAMENTE en técnicas y preparaciones estándar de repositorios gastronómicos profesionales reconocidos (Larousse Gastronomique, alta pastelería francesa y cocina deportiva de precisión). Queda estrictamente prohibido inventar mezclas gastronómicamente absurdas.
+
+DESPENSA DISPONIBLE (Usa EXCLUSIVAMENTE estos alimentos):
 [
 ${despensaTexto}
 ]
 
 REQUISITOS ESTRICTOS:
-1. Objetivo calórico total de la receta: exactamente ${metaKcal.toFixed(0)} kcal (margen de tolerancia +- 15 kcal).
-2. Perfil culinario solicitado: "${tipoComida}" (respeta estrictamente si se pide dulce o salado).
-${instruccionUrgente ? `3. ${instruccionUrgente}` : ''}
-${antojoExtra ? `4. Preferencias del usuario: "${antojoExtra}".` : ''}
-5. NO uses ingredientes inventados que no estén en la despensa (puedes asumir agua, sal o especias secas comunes).
-6. Calcula los gramos EXACTOS de cada ingrediente para sumar las Kcal objetivo.
-7. Responde ÚNICAMENTE en formato JSON válido con la siguiente estructura, sin texto antes ni después:
+1. Objetivo calórico total: exactamente ${metaKcal.toFixed(0)} kcal (margen +- 15 kcal).
+2. Perfil y momento culinario: "${tipoComida}". Respeta fielmente si es dulce o salado.
+3. Método de preparación requerido: "${metodoCoccion}".
+   - Si se especifica "Sin cocción / En frío", diseña un plato que se consuma inmediatamente tras mezclar/ensamblar (ej. preparaciones tipo porridge frío, bowl de yogurt con toppings, muesli, parfait o batidos). Bajo ninguna circunstancia uses alimentos crudos no aptos para consumo directo como huevo crudo o legumbres crudas.
+   - Si se especifica "Requiere cocción", incluye técnicas culinarias reales de cocción (salteado, horneado, hervido, tostado).
+${protDeseada > 0 ? `4. Requisito de proteína: La receta DEBE alcanzar como mínimo ${protDeseada}g de proteínas totales.` : ''}
+${instruccionReplicar ? `5. ${instruccionReplicar}` : ''}
+${instruccionUrgente ? `6. ${instruccionUrgente}` : ''}
+${antojoExtra ? `7. Preferencia o antojo del usuario: "${antojoExtra}".` : ''}
+8. NO inventes ingredientes no presentes en la despensa (puedes asumir agua, sal o especias secas comunes).
+9. Calcula los gramos EXACTOS de cada ingrediente para sumar las Kcal y macros objetivo.
+10. Responde ÚNICAMENTE en formato JSON válido con la siguiente estructura, sin texto antes ni después:
 {
-  "nombre": "Nombre atractivo del plato",
-  "descripcion": "Breve frase explicando la textura y sabor",
+  "nombre": "Nombre profesional y apetitoso del plato",
+  "descripcion": "Explicación sensorial de la textura, técnica y sabor",
   "ingredientes": [
     { "alimentoId": id_del_alimento, "nombre": "nombre_exacto", "gramos": numero_gramos }
   ],
   "pasos": [
-    "Paso 1...",
-    "Paso 2...",
-    "Paso 3..."
+    "Paso 1 técnico...",
+    "Paso 2 técnico...",
+    "Paso 3 técnico..."
   ]
 }
 `;
 
   try {
-    const resp = await fetch(WORKER_CHEF_URL, {
+    const data = await fetchConReintento(WORKER_CHEF_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1014,19 +1193,6 @@ ${antojoExtra ? `4. Preferencias del usuario: "${antojoExtra}".` : ''}
         generationConfig: { responseMimeType: 'application/json' }
       })
     });
-
-    const data = await resp.json();
-
-    if (!resp.ok) {
-      if (resp.status === 429) {
-        throw new Error('Límite de solicitudes por minuto alcanzado. Espera 10-15 segundos y vuelve a presionar el botón.');
-      }
-      if (resp.status === 503) {
-        throw new Error('Los servidores de Google están con alta demanda en este instante. Intenta nuevamente en unos segundos.');
-      }
-      const detalleError = data?.error?.message || `Código ${resp.status}`;
-      throw new Error(`Aviso del Chef IA: ${detalleError}`);
-    }
 
     const rawJson = data.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!rawJson) throw new Error('No se recibió contenido válido del Chef IA.');
@@ -1048,7 +1214,6 @@ ${antojoExtra ? `4. Preferencias del usuario: "${antojoExtra}".` : ''}
   }
 });
 
-// Renderizado y escalado dinámico de porciones
 function renderizarRecetaIAEscalada(factor) {
   if (!recetaIABaseOriginal) return;
   factorEscalaActual = factor;
@@ -1233,15 +1398,16 @@ if (btnVozPaso) {
    ============================================================ */
 const mezcladorFiltro = document.getElementById('mezclador-filtro');
 if (mezcladorFiltro) {
-  mezcladorFiltro.addEventListener('input', () => poblarSelectMezclador(mezcladorFiltro.value.trim().toLowerCase()));
+  mezcladorFiltro.addEventListener('input', () => poblarSelectMezclador(mezcladorFiltro.value));
 }
 
 function poblarSelectMezclador(filtro = '') {
   const sel = document.getElementById('mezclador-select-alimento');
   if (!sel) return;
   sel.innerHTML = '<option value="">-- Selecciona alimento --</option>';
+  const fNorm = normalizarTexto(filtro);
 
-  const alis = alimentosCache.filter(a => a.nombre.toLowerCase().includes(filtro));
+  const alis = alimentosCache.filter(a => normalizarTexto(a.nombre).includes(fNorm));
   alis.forEach(a => sel.appendChild(new Option(`${a.nombre} (${a.kcal} kcal/100g | P:${a.proteinas}g)`, a.id)));
 }
 
@@ -1583,7 +1749,7 @@ function generarObjetoRespaldo() {
     if (!db) return reject('Base de datos no inicializada');
     const tx = db.transaction(['alimentos', 'recetas', 'diario', 'config'], 'readonly');
     const respaldo = {
-      versionApp: 'CoffeeBreak_v10',
+      versionApp: 'CoffeeBreak_v11',
       fechaExportacion: new Date().toISOString(),
       alimentos: [],
       recetas: [],
