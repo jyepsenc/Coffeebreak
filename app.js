@@ -6,6 +6,7 @@ const DB_VERSION = 3;
 const WORKER_CHEF_URL = 'https://coffiachef.jyepsenc.workers.dev';
 
 let db = null;
+let dbInicializadaPromesa = null;
 let alimentosCache = [];
 let recetasCache = [];
 let categoriasCache = ['Desayuno', 'Almuerzo', 'Once/Cena', 'Snacks'];
@@ -62,46 +63,54 @@ function activarPestanas() {
   });
 }
 
-// 3. INICIALIZACIÓN DE INDEXEDDB
-function initDB() {
-  const req = indexedDB.open(DB_NAME, DB_VERSION);
+// 3. INICIALIZACIÓN DE INDEXEDDB CON PROMESA BLINDADA
+function asegurarDB() {
+  if (db) return Promise.resolve(db);
+  if (dbInicializadaPromesa) return dbInicializadaPromesa;
 
-  req.onupgradeneeded = (e) => {
-    const dbInstance = e.target.result;
-    if (!dbInstance.objectStoreNames.contains('alimentos')) {
-      dbInstance.createObjectStore('alimentos', { keyPath: 'id', autoIncrement: true });
-    }
-    if (!dbInstance.objectStoreNames.contains('recetas')) {
-      dbInstance.createObjectStore('recetas', { keyPath: 'id', autoIncrement: true });
-    }
-    if (!dbInstance.objectStoreNames.contains('diario')) {
-      const diarioStore = dbInstance.createObjectStore('diario', { keyPath: 'id', autoIncrement: true });
-      diarioStore.createIndex('fecha', 'fecha', { unique: false });
-    }
-    if (!dbInstance.objectStoreNames.contains('config')) {
-      dbInstance.createObjectStore('config', { keyPath: 'clave' });
-    }
-  };
+  dbInicializadaPromesa = new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
 
-  req.onsuccess = (e) => {
-    db = e.target.result;
-    cargarTodo();
-    // Auto-sincronización al iniciar si hay PIN guardado
-    setTimeout(() => sincronizarConLaNubeSilencioso(), 1500);
-  };
+    req.onupgradeneeded = (e) => {
+      const dbInstance = e.target.result;
+      if (!dbInstance.objectStoreNames.contains('alimentos')) {
+        dbInstance.createObjectStore('alimentos', { keyPath: 'id', autoIncrement: true });
+      }
+      if (!dbInstance.objectStoreNames.contains('recetas')) {
+        dbInstance.createObjectStore('recetas', { keyPath: 'id', autoIncrement: true });
+      }
+      if (!dbInstance.objectStoreNames.contains('diario')) {
+        const diarioStore = dbInstance.createObjectStore('diario', { keyPath: 'id', autoIncrement: true });
+        diarioStore.createIndex('fecha', 'fecha', { unique: false });
+      }
+      if (!dbInstance.objectStoreNames.contains('config')) {
+        dbInstance.createObjectStore('config', { keyPath: 'clave' });
+      }
+    };
 
-  req.onerror = (e) => console.error('Error DB:', e.target.error);
+    req.onsuccess = (e) => {
+      db = e.target.result;
+      resolve(db);
+    };
+
+    req.onerror = (e) => {
+      console.error('Error DB:', e.target.error);
+      reject(e.target.error);
+    };
+  });
+
+  return dbInicializadaPromesa;
 }
 
-function cargarTodo() {
+async function cargarTodo() {
   const inputFecha = document.getElementById('diario-fecha');
   if (inputFecha) inputFecha.value = fechaSeleccionada;
 
   poblarFormMetas();
   poblarPinGuardado();
-  if (!db) return;
 
-  const tx = db.transaction(['config', 'alimentos', 'recetas'], 'readonly');
+  const database = await asegurarDB();
+  const tx = database.transaction(['config', 'alimentos', 'recetas'], 'readonly');
 
   const reqMetas = tx.objectStore('config').get('metas_diarias');
   reqMetas.onsuccess = () => {
@@ -225,7 +234,7 @@ async function descargarDatosDeLaNube(mostrarAlerta = true) {
       return;
     }
 
-    procesarEInsertarDatos(resJson.data);
+    await procesarEInsertarDatos(resJson.data);
     if (statusMsg) statusMsg.textContent = `✓ Datos descargados y actualizados: ${new Date().toLocaleTimeString()}`;
     if (mostrarAlerta) alert('✓ ¡Datos sincronizados y descargados con éxito!');
   } catch (err) {
@@ -369,8 +378,8 @@ function renderizarListaAlimentosGuardados(filtro = '') {
     const li = document.createElement('li');
     li.innerHTML = `
       <div>
-        <strong>${a.nombre}</strong> ${a.marca ? `(${a.marca})` : ''}<br>
-        <small style="color: var(--text-muted);">${a.kcal} kcal | P: ${a.proteinas}g | C: ${a.carbohidratos}g | G: ${a.grasas}g</small>
+        <strong>${a.nombre}</strong>${a.marca ? `(${a.marca})` : ''}<br>
+        <small style="color: var(--text-muted);">${a.kcal} kcal \vert{} P:${a.proteinas}g | C: ${a.carbohidratos}g \vert{} G:${a.grasas}g</small>
       </div>
       <button class="btn-del" onclick="eliminarAlimento(${a.id})">Borrar</button>
     `;
@@ -400,7 +409,7 @@ function renderizarListaRecetasGuardadas(filtro = '') {
     li.innerHTML = `
       <div>
         <strong>${r.nombre}</strong><br>
-        <small style="color: var(--text-muted);">${r.kcalPor100g.toFixed(1)} kcal/100g (Total: ${r.pesoTotal}g ${r.pesoCocinadoFinal ? `[Cocido: ${r.pesoCocinadoFinal}g]` : ''} - ${r.kcalTotal.toFixed(0)} kcal)</small>
+        <small style="color: var(--text-muted);">${r.kcalPor100g.toFixed(1)} kcal/100g (Total: ${r.pesoTotal}g${r.pesoCocinadoFinal ? `[Cocido: ${r.pesoCocinadoFinal}g]` : ''} - ${r.kcalTotal.toFixed(0)} kcal)</small>
       </div>
       <div style="display: flex; gap: 0.4rem;">
         <button class="btn-secondary" onclick="cargarRecetaParaEditar(${r.id})">Editar</button>
@@ -472,7 +481,7 @@ document.getElementById('btn-calcular-conversion').addEventListener('click', () 
   boxRes.classList.remove('hidden');
 });
 
-document.getElementById('btn-agregar-conversion-diario').addEventListener('click', () => {
+document.getElementById('btn-agregar-conversion-diario').addEventListener('click', async () => {
   if (!conversionCalculadaTemp) return;
   const cat = prompt(`¿A qué categoría agregarlo? (${categoriasCache.join(', ')}):`, categoriasCache[0]);
   if (!cat || !categoriasCache.includes(cat.trim())) return;
@@ -488,7 +497,8 @@ document.getElementById('btn-agregar-conversion-diario').addEventListener('click
     grasas: conversionCalculadaTemp.grasas
   };
 
-  const tx = db.transaction(['diario'], 'readwrite');
+  const database = await asegurarDB();
+  const tx = database.transaction(['diario'], 'readwrite');
   tx.objectStore('diario').add(entrada);
   tx.oncomplete = () => {
     alert(`✓ ¡Añadido a ${cat}!`);
@@ -689,7 +699,7 @@ function actualizarVistasAlimentos() {
   renderizarListaAlimentosGuardados();
 }
 
-document.getElementById('form-alimento').addEventListener('submit', (e) => {
+document.getElementById('form-alimento').addEventListener('submit', async (e) => {
   e.preventDefault();
   const parseVal = (id) => parseFloat(document.getElementById(id).value) || 0;
 
@@ -710,7 +720,8 @@ document.getElementById('form-alimento').addEventListener('submit', (e) => {
     colesterol: parseVal('colesterol')
   };
 
-  const tx = db.transaction(['alimentos'], 'readwrite');
+  const database = await asegurarDB();
+  const tx = database.transaction(['alimentos'], 'readwrite');
   tx.objectStore('alimentos').add(alimento);
   tx.oncomplete = () => {
     document.getElementById('form-alimento').reset();
@@ -721,17 +732,19 @@ document.getElementById('form-alimento').addEventListener('submit', (e) => {
   };
 });
 
-function recargarAlimentos() {
-  db.transaction(['alimentos'], 'readonly').objectStore('alimentos').getAll().onsuccess = (e) => {
+async function recargarAlimentos() {
+  const database = await asegurarDB();
+  database.transaction(['alimentos'], 'readonly').objectStore('alimentos').getAll().onsuccess = (e) => {
     alimentosCache = e.target.result || [];
     actualizarVistasAlimentos();
     actualizarSelectoresGlobales();
   };
 }
 
-window.eliminarAlimento = function(id) {
+window.eliminarAlimento = async function(id) {
   if (!confirm('¿Eliminar este alimento?')) return;
-  const tx = db.transaction(['alimentos'], 'readwrite');
+  const database = await asegurarDB();
+  const tx = database.transaction(['alimentos'], 'readwrite');
   tx.objectStore('alimentos').delete(id);
   tx.oncomplete = () => {
     recargarAlimentos();
@@ -873,7 +886,7 @@ function resetearFormularioReceta() {
   actualizarVistaBorradorReceta();
 }
 
-document.getElementById('btn-guardar-receta').addEventListener('click', () => {
+document.getElementById('btn-guardar-receta').addEventListener('click', async () => {
   const nombre = document.getElementById('receta-nombre').value.trim();
   if (!nombre || recetaBorrador.length === 0) {
     alert('Ingresa un nombre y al menos un ingrediente.');
@@ -908,7 +921,8 @@ document.getElementById('btn-guardar-receta').addEventListener('click', () => {
     grasasPor100g: pesoReferencia100g > 0 ? (totGrasas / pesoReferencia100g) * 100 : 0
   };
 
-  const tx = db.transaction(['recetas'], 'readwrite');
+  const database = await asegurarDB();
+  const tx = database.transaction(['recetas'], 'readwrite');
   const store = tx.objectStore('recetas');
 
   if (recetaEditandoId !== null) {
@@ -926,8 +940,9 @@ document.getElementById('btn-guardar-receta').addEventListener('click', () => {
   };
 });
 
-function recargarRecetas() {
-  db.transaction(['recetas'], 'readonly').objectStore('recetas').getAll().onsuccess = (e) => {
+async function recargarRecetas() {
+  const database = await asegurarDB();
+  database.transaction(['recetas'], 'readonly').objectStore('recetas').getAll().onsuccess = (e) => {
     recetasCache = e.target.result || [];
     actualizarVistasRecetas();
     actualizarSelectoresGlobales();
@@ -938,9 +953,10 @@ function actualizarVistasRecetas() {
   renderizarListaRecetasGuardadas();
 }
 
-window.eliminarReceta = function(id) {
+window.eliminarReceta = async function(id) {
   if (!confirm('¿Eliminar esta preparación?')) return;
-  const tx = db.transaction(['recetas'], 'readwrite');
+  const database = await asegurarDB();
+  const tx = database.transaction(['recetas'], 'readwrite');
   tx.objectStore('recetas').delete(id);
   tx.oncomplete = () => {
     recargarRecetas();
@@ -965,7 +981,7 @@ function poblarFormMetas() {
   if (eMetaKcalDash) eMetaKcalDash.textContent = metasActuales.kcal;
 }
 
-document.getElementById('form-metas').addEventListener('submit', (e) => {
+document.getElementById('form-metas').addEventListener('submit', async (e) => {
   e.preventDefault();
   metasActuales = {
     kcal: parseFloat(document.getElementById('meta-kcal').value) || 0,
@@ -974,7 +990,8 @@ document.getElementById('form-metas').addEventListener('submit', (e) => {
     grasas: parseFloat(document.getElementById('meta-grasas').value) || 0
   };
 
-  const tx = db.transaction(['config'], 'readwrite');
+  const database = await asegurarDB();
+  const tx = database.transaction(['config'], 'readwrite');
   tx.objectStore('config').put({ clave: 'metas_diarias', valor: metasActuales });
   tx.oncomplete = () => {
     alert('Metas actualizadas.');
@@ -991,11 +1008,12 @@ document.getElementById('diario-fecha').addEventListener('change', (e) => {
   cargarDiario();
 });
 
-document.getElementById('btn-nueva-categoria').addEventListener('click', () => {
+document.getElementById('btn-nueva-categoria').addEventListener('click', async () => {
   const nom = prompt('Nombre de la categoría (Ej: Merienda, Pre-entreno):');
   if (nom && !categoriasCache.includes(nom.trim())) {
     categoriasCache.push(nom.trim());
-    const tx = db.transaction(['config'], 'readwrite');
+    const database = await asegurarDB();
+    const tx = database.transaction(['config'], 'readwrite');
     tx.objectStore('config').put({ clave: 'categorias', valor: categoriasCache });
     tx.oncomplete = () => {
       cargarDiario();
@@ -1004,9 +1022,9 @@ document.getElementById('btn-nueva-categoria').addEventListener('click', () => {
   }
 });
 
-function cargarDiario() {
-  if (!db) return;
-  const tx = db.transaction(['diario'], 'readonly');
+async function cargarDiario() {
+  const database = await asegurarDB();
+  const tx = database.transaction(['diario'], 'readonly');
   const index = tx.objectStore('diario').index('fecha');
   const req = index.getAll(IDBKeyRange.only(fechaSeleccionada));
 
@@ -1045,7 +1063,7 @@ function renderizarEstructuraDiario(entradas) {
         <div class="comida-item">
           <div>
             <strong>${item.nombre}</strong> (${item.gramos}g)<br>
-            <small>${item.kcal.toFixed(0)} kcal • P: ${item.proteinas.toFixed(1)}g | C: ${item.carbohidratos.toFixed(1)}g | G: ${item.grasas.toFixed(1)}g</small>
+            <small>${item.kcal.toFixed(0)} kcal • P: ${item.proteinas.toFixed(1)}g | C: ${item.carbohidratos.toFixed(1)}g \vert{} G:${item.grasas.toFixed(1)}g</small>
           </div>
           <button class="btn-del" onclick="eliminarEntradaDiario(${item.id})">x</button>
         </div>
@@ -1091,7 +1109,7 @@ function actualizarDashboard(kCons, pCons, cCons, gCons) {
     const rElem = document.getElementById(idRest);
     const sElem = document.getElementById(idSub);
     rElem.textContent = `${rest.toFixed(1)}g`;
-    sElem.textContent = `${cons.toFixed(1)} / ${meta}g`;
+    sElem.textContent = `${cons.toFixed(1)} /${meta}g`;
     if (rest < 0) rElem.classList.add('alerta-exceso');
     else rElem.classList.remove('alerta-exceso');
   };
@@ -1136,7 +1154,7 @@ function poblarSelectModalDiario(filtro = '') {
   recs.forEach(r => sel.appendChild(new Option(`${r.nombre} [Receta] (${r.kcalPor100g.toFixed(1)} kcal/100g)`, `rec_${r.id}`)));
 }
 
-document.getElementById('btn-confirmar-agregar-diario').addEventListener('click', () => {
+document.getElementById('btn-confirmar-agregar-diario').addEventListener('click', async () => {
   const itemVal = document.getElementById('diario-select-item').value;
   const gramos = parseFloat(document.getElementById('diario-input-gramos').value) || 0;
 
@@ -1168,7 +1186,8 @@ document.getElementById('btn-confirmar-agregar-diario').addEventListener('click'
     grasas: g100 * f
   };
 
-  const tx = db.transaction(['diario'], 'readwrite');
+  const database = await asegurarDB();
+  const tx = database.transaction(['diario'], 'readwrite');
   tx.objectStore('diario').add(entrada);
   tx.oncomplete = () => {
     cerrarModalDiario();
@@ -1177,8 +1196,9 @@ document.getElementById('btn-confirmar-agregar-diario').addEventListener('click'
   };
 });
 
-window.eliminarEntradaDiario = function(id) {
-  const tx = db.transaction(['diario'], 'readwrite');
+window.eliminarEntradaDiario = async function(id) {
+  const database = await asegurarDB();
+  const tx = database.transaction(['diario'], 'readwrite');
   tx.objectStore('diario').delete(id);
   tx.oncomplete = () => {
     cargarDiario();
@@ -1273,7 +1293,7 @@ document.getElementById('btn-generar-receta-ia').addEventListener('click', async
   }
 
   const despensaTexto = alimentosCache.map(a => 
-    `{id: ${a.id}, nombre: "${a.nombre}", kcal100: ${a.kcal}, p100: ${a.proteinas}, c100: ${a.carbohidratos}, g100: ${a.grasas}}`
+    `{id: ${a.id}, nombre: "${a.nombre}", kcal100: ${a.kcal}, p100:${a.proteinas}, c100: ${a.carbohidratos}, g100:${a.grasas}}`
   ).join(',\n');
 
   const aiStatus = document.getElementById('ai-status');
@@ -1424,7 +1444,7 @@ function renderizarRecetaIAEscalada(factor) {
     olPasos.appendChild(li);
   });
 
-  document.getElementById('ai-macros-totales').textContent = `Total: P: ${totProt.toFixed(1)}g | C: ${totCarbs.toFixed(1)}g | G: ${totGrasas.toFixed(1)}g`;
+  document.getElementById('ai-macros-totales').textContent = `Total: P: ${totProt.toFixed(1)}g | C: ${totCarbs.toFixed(1)}g \vert{} G:${totGrasas.toFixed(1)}g`;
 }
 
 document.querySelectorAll('.btn-scale').forEach(btn => {
@@ -1434,10 +1454,11 @@ document.querySelectorAll('.btn-scale').forEach(btn => {
   });
 });
 
-document.getElementById('btn-guardar-receta-ia').addEventListener('click', () => {
+document.getElementById('btn-guardar-receta-ia').addEventListener('click', async () => {
   if (!recetaIAPendiente) return;
 
-  const tx = db.transaction(['recetas'], 'readwrite');
+  const database = await asegurarDB();
+  const tx = database.transaction(['recetas'], 'readwrite');
   tx.objectStore('recetas').add(recetaIAPendiente);
   tx.oncomplete = () => {
     alert(`✓ ¡"${recetaIAPendiente.nombre}" guardada en Recetas!`);
@@ -1479,7 +1500,7 @@ function actualizarVistaModoCocina() {
   const tot = pasos.length;
 
   document.getElementById('cocina-receta-titulo').textContent = recetaIAPendiente.nombre;
-  document.getElementById('cocina-paso-contador').textContent = `Paso ${pasoCocinaActual + 1} de ${tot}`;
+  document.getElementById('cocina-paso-contador').textContent = `Paso ${pasoCocinaActual + 1} de${tot}`;
   document.getElementById('cocina-paso-texto').textContent = pasos[pasoCocinaActual];
 
   const resIng = (recetaIAPendiente.ingredientes || []).map(i => `${i.nombre} (${i.gramos.toFixed(0)}g)`).join(' • ');
@@ -1543,7 +1564,7 @@ function poblarSelectMezclador(filtro = '') {
   const fNorm = normalizarTexto(filtro);
 
   const alis = alimentosCache.filter(a => normalizarTexto(a.nombre).includes(fNorm));
-  alis.forEach(a => sel.appendChild(new Option(`${a.nombre} (${a.kcal} kcal/100g | P:${a.proteinas}g)`, a.id)));
+  alis.forEach(a => sel.appendChild(new Option(`${a.nombre} (${a.kcal} kcal/100g \vert{} P:${a.proteinas}g)`, a.id)));
 }
 
 const selectTipoObjetivo = document.getElementById('mezclador-tipo-objetivo');
@@ -1586,7 +1607,7 @@ function renderizarSeleccionMezclador() {
     if (a) {
       const li = document.createElement('li');
       li.innerHTML = `
-        <span><strong>${a.nombre}</strong> (${a.kcal} kcal/100g - Prot: ${a.proteinas}g)</span>
+        <span><strong>${a.nombre}</strong> (${a.kcal} kcal/100g - Prot:${a.proteinas}g)</span>
         <button class="btn-del" onclick="quitarDeMezclador(${idx})">x</button>
       `;
       lista.appendChild(li);
@@ -1745,281 +1766,4 @@ document.getElementById('btn-calcular-mezcla-personalizada').addEventListener('c
     if (excesoG > 0) alertas.push(`<span class="alerta-exceso">+${excesoG.toFixed(1)}g Grasas</span>`);
 
     card.innerHTML = `
-      <h4>${est.titulo}</h4>
-      <small style="color: var(--primary); font-weight: 600;">${est.tipo}</small>
-      <div style="margin: 0.5rem 0; line-height: 1.4;">${est.desglose}</div>
-      <div style="font-size:0.85rem; margin-top:0.4rem; border-top: 1px solid var(--border); padding-top: 0.4rem;">
-        Aporte: <strong>${totalKcal.toFixed(0)} kcal</strong> | 
-        <span class="${excesoP > 0 ? 'alerta-exceso' : ''}">P: ${est.totales.p.toFixed(1)}g</span> | 
-        <span class="${excesoC > 0 ? 'alerta-exceso' : ''}">C: ${est.totales.c.toFixed(1)}g</span> | 
-        <span class="${excesoG > 0 ? 'alerta-exceso' : ''}">G: ${est.totales.g.toFixed(1)}g</span>
-      </div>
-      ${alertas.length > 0 ? `<div style="font-size:0.75rem; margin-top:0.4rem;">Exceso advertido: ${alertas.join(' | ')}</div>` : '<div style="font-size:0.75rem; color:var(--success); margin-top:0.4rem;">✓ Cuadra dentro de tus macros</div>'}
-    `;
-    cont.appendChild(card);
-  });
-});
-
-/* ============================================================
-   SECCIÓN: SUGERENCIAS AUTOMÁTICAS
-   ============================================================ */
-document.getElementById('btn-calcular-sugerencias').addEventListener('click', () => {
-  const rest = window.restantesGlobales || { kcal: 0, proteinas: 0, carbohidratos: 0, grasas: 0 };
-  const cont = document.getElementById('contenedor-sugerencias');
-  cont.innerHTML = '';
-
-  if (rest.kcal <= 0) {
-    cont.innerHTML = '<p style="color:var(--text-muted)">Ya has alcanzado tu meta de Kcal del día.</p>';
-    return;
-  }
-
-  const modo = document.getElementById('sug-modo').value;
-  const sugerencias = [];
-
-  if (modo === 'individuales' || modo === 'todos') {
-    const catalogo = [
-      ...alimentosCache.map(a => ({ nombre: a.nombre, kcal100: a.kcal, p100: a.proteinas, c100: a.carbohidratos, g100: a.grasas, tipo: 'Alimento' })),
-      ...recetasCache.map(r => ({ nombre: r.nombre, kcal100: r.kcalPor100g, p100: r.protPor100g, c100: r.carbsPor100g, g100: r.grasasPor100g, tipo: 'Receta' }))
-    ];
-
-    catalogo.forEach(item => {
-      if (item.kcal100 <= 0) return;
-      const gReq = (rest.kcal / item.kcal100) * 100;
-      const f = gReq / 100;
-
-      const pAporte = item.p100 * f;
-      const cAporte = item.c100 * f;
-      const gAporte = item.g100 * f;
-
-      sugerencias.push({
-        titulo: item.nombre,
-        tipo: item.tipo,
-        descripcion: `Consumir exactamente: <span class="sug-gramos">${gReq.toFixed(1)} g</span>`,
-        kcal: rest.kcal,
-        p: pAporte,
-        c: cAporte,
-        g: gAporte,
-        excesoP: pAporte > rest.proteinas + 0.5 ? pAporte - rest.proteinas : 0,
-        excesoC: cAporte > rest.carbohidratos + 0.5 ? cAporte - rest.carbohidratos : 0,
-        excesoG: gAporte > rest.grasas + 0.5 ? gAporte - rest.grasas : 0
-      });
-    });
-  }
-
-  if (modo === 'combinaciones' || modo === 'todos') {
-    recetasCache.forEach(rec => {
-      if (rec.ingredientes && rec.ingredientes.length >= 2) {
-        const ing1 = alimentosCache.find(a => a.id === rec.ingredientes[0].alimentoId);
-        const ing2 = alimentosCache.find(a => a.id === rec.ingredientes[1].alimentoId);
-
-        if (ing1 && ing2 && ing1.kcal > 0 && ing2.kcal > 0) {
-          const prop1 = rec.ingredientes[0].gramos;
-          const prop2 = rec.ingredientes[1].gramos;
-          const kcalMezclaOriginal = (ing1.kcal * prop1 / 100) + (ing2.kcal * prop2 / 100);
-
-          if (kcalMezclaOriginal > 0) {
-            const factorEscala = rest.kcal / kcalMezclaOriginal;
-            const g1Final = prop1 * factorEscala;
-            const g2Final = prop2 * factorEscala;
-
-            const pAporte = (ing1.proteinas * g1Final / 100) + (ing2.proteinas * g2Final / 100);
-            const cAporte = (ing1.carbohidratos * g1Final / 100) + (ing2.carbohidratos * g2Final / 100);
-            const gAporte = (ing1.grasas * g1Final / 100) + (ing2.grasas * g2Final / 100);
-
-            sugerencias.push({
-              titulo: `${ing1.nombre} + ${ing2.nombre}`,
-              tipo: `Combinación habitual (${rec.nombre})`,
-              descripcion: `
-                • ${ing1.nombre}: <span class="sug-gramos">${g1Final.toFixed(1)} g</span><br>
-                • ${ing2.nombre}: <span class="sug-gramos">${g2Final.toFixed(1)} g</span>
-              `,
-              kcal: rest.kcal,
-              p: pAporte,
-              c: cAporte,
-              g: gAporte,
-              excesoP: pAporte > rest.proteinas + 0.5 ? pAporte - rest.proteinas : 0,
-              excesoC: cAporte > rest.carbohidratos + 0.5 ? cAporte - rest.carbohidratos : 0,
-              excesoG: gAporte > rest.grasas + 0.5 ? gAporte - rest.grasas : 0
-            });
-          }
-        }
-      }
-    });
-  }
-
-  if (sugerencias.length === 0) {
-    cont.innerHTML = '<p style="color:var(--text-muted)">No hay sugerencias disponibles.</p>';
-    return;
-  }
-
-  sugerencias.forEach(sug => {
-    const card = document.createElement('div');
-    card.className = 'sugerencia-card';
-
-    let alertas = [];
-    if (sug.excesoP > 0) alertas.push(`<span class="alerta-exceso">+${sug.excesoP.toFixed(1)}g Prot</span>`);
-    if (sug.excesoC > 0) alertas.push(`<span class="alerta-exceso">+${sug.excesoC.toFixed(1)}g Carbs</span>`);
-    if (sug.excesoG > 0) alertas.push(`<span class="alerta-exceso">+${sug.excesoG.toFixed(1)}g Grasas</span>`);
-
-    card.innerHTML = `
-      <h4>${sug.titulo} <small style="color:var(--text-muted)">(${sug.tipo})</small></h4>
-      <div style="margin: 0.4rem 0;">${sug.descripcion}</div>
-      <div style="font-size:0.85rem; margin-top:0.3rem;">
-        Aporta: <strong>${sug.kcal.toFixed(0)} kcal</strong> | 
-        <span class="${sug.excesoP > 0 ? 'alerta-exceso' : ''}">P: ${sug.p.toFixed(1)}g</span> | 
-        <span class="${sug.excesoC > 0 ? 'alerta-exceso' : ''}">C: ${sug.c.toFixed(1)}g</span> | 
-        <span class="${sug.excesoG > 0 ? 'alerta-exceso' : ''}">G: ${sug.g.toFixed(1)}g</span>
-      </div>
-      ${alertas.length > 0 ? `<div style="font-size:0.75rem; margin-top:0.4rem;">Exceso advertido: ${alertas.join(' | ')}</div>` : '<div style="font-size:0.75rem; color:var(--success); margin-top:0.4rem;">✓ Cuadra perfectamente dentro de tus macros</div>'}
-    `;
-    cont.appendChild(card);
-  });
-});
-
-/* ============================================================
-   SECCIÓN: RESPALDO LOCAL (EXPORTAR E IMPORTAR JSON)
-   ============================================================ */
-function generarObjetoRespaldo() {
-  return new Promise((resolve, reject) => {
-    if (!db) return reject('Base de datos no inicializada');
-    const tx = db.transaction(['alimentos', 'recetas', 'diario', 'config'], 'readonly');
-    const respaldo = {
-      versionApp: 'CoffeeBreak_v12',
-      fechaExportacion: new Date().toISOString(),
-      alimentos: [],
-      recetas: [],
-      diario: [],
-      config: []
-    };
-
-    tx.objectStore('alimentos').getAll().onsuccess = (e) => respaldo.alimentos = e.target.result || [];
-    tx.objectStore('recetas').getAll().onsuccess = (e) => respaldo.recetas = e.target.result || [];
-    tx.objectStore('diario').getAll().onsuccess = (e) => respaldo.diario = e.target.result || [];
-    tx.objectStore('config').getAll().onsuccess = (e) => respaldo.config = e.target.result || [];
-
-    tx.oncomplete = () => resolve(respaldo);
-    tx.onerror = (e) => reject(e);
-  });
-}
-
-document.getElementById('btn-generar-texto-backup').addEventListener('click', async () => {
-  try {
-    const data = await generarObjetoRespaldo();
-    const jsonStr = JSON.stringify(data, null, 2);
-    const txtArea = document.getElementById('txt-backup-generado');
-    const contenedor = document.getElementById('contenedor-texto-exportado');
-
-    txtArea.value = jsonStr;
-    contenedor.classList.remove('hidden');
-    contenedor.scrollIntoView({ behavior: 'smooth' });
-  } catch (err) {
-    console.error(err);
-    alert('Error al leer los datos locales.');
-  }
-});
-
-document.getElementById('btn-seleccionar-todo').addEventListener('click', () => {
-  const txtArea = document.getElementById('txt-backup-generado');
-  txtArea.focus();
-  txtArea.select();
-  txtArea.setSelectionRange(0, 999999);
-  alert('Texto seleccionado.');
-});
-
-document.getElementById('btn-descargar-archivo').addEventListener('click', async () => {
-  try {
-    const data = await generarObjetoRespaldo();
-    const jsonStr = JSON.stringify(data, null, 2);
-    const fileName = `coffeebreak_backup_${new Date().toISOString().split('T')[0]}.json`;
-
-    const encodedData = 'data:application/json;charset=utf-8,' + encodeURIComponent(jsonStr);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedData);
-    link.setAttribute('download', fileName);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
-  } catch (err) {
-    console.error(err);
-    alert('Usa la opción de copiar texto.');
-  }
-});
-
-function procesarEInsertarDatos(data) {
-  if (!data || (!data.alimentos && !data.recetas && !data.diario)) {
-    alert('El contenido no corresponde a un respaldo válido.');
-    return;
-  }
-
-  const tx = db.transaction(['alimentos', 'recetas', 'diario', 'config'], 'readwrite');
-
-  if (Array.isArray(data.alimentos)) {
-    const store = tx.objectStore('alimentos');
-    data.alimentos.forEach(item => store.put(item));
-  }
-  if (Array.isArray(data.recetas)) {
-    const store = tx.objectStore('recetas');
-    data.recetas.forEach(item => store.put(item));
-  }
-  if (Array.isArray(data.diario)) {
-    const store = tx.objectStore('diario');
-    data.diario.forEach(item => store.put(item));
-  }
-  if (Array.isArray(data.config)) {
-    const store = tx.objectStore('config');
-    data.config.forEach(item => store.put(item));
-  }
-
-  tx.oncomplete = () => {
-    cargarTodo();
-  };
-
-  tx.onerror = (e) => {
-    console.error(e);
-    alert('Error al escribir en la base de datos.');
-  };
-}
-
-document.getElementById('btn-restaurar-texto').addEventListener('click', () => {
-  const txt = document.getElementById('txt-importar-manual').value.trim();
-  if (!txt) return alert('Pega el texto del respaldo primero.');
-
-  try {
-    const data = JSON.parse(txt);
-    procesarEInsertarDatos(data);
-    document.getElementById('txt-importar-manual').value = '';
-    alert('✓ ¡Datos locales restaurados!');
-    subirDatosALaNube(false);
-  } catch (err) {
-    console.error(err);
-    alert('El texto no es un JSON válido.');
-  }
-});
-
-document.getElementById('input-importar-backup').addEventListener('change', (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-
-  const reader = new FileReader();
-  reader.onload = (event) => {
-    try {
-      const data = JSON.parse(event.target.result);
-      procesarEInsertarDatos(data);
-      e.target.value = '';
-      alert('✓ ¡Archivo restaurado con éxito!');
-      subirDatosALaNube(false);
-    } catch (err) {
-      console.error(err);
-      alert('El archivo no contiene un JSON válido.');
-      e.target.value = '';
-    }
-  };
-  reader.readAsText(file);
-});
-
-// 6. ARRANQUE
-window.addEventListener('DOMContentLoaded', () => {
-  activarPestanas();
-  initDB();
-});
+      <h4>${est.titulo}
