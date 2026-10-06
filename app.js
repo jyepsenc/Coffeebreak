@@ -6,7 +6,6 @@ const DB_VERSION = 3;
 const WORKER_CHEF_URL = 'https://coffiachef.jyepsenc.workers.dev';
 
 let db = null;
-let dbInicializadaPromesa = null;
 let alimentosCache = [];
 let recetasCache = [];
 let categoriasCache = ['Desayuno', 'Almuerzo', 'Once/Cena', 'Snacks'];
@@ -29,11 +28,17 @@ let pasoCocinaActual = 0;
 let conversionCalculadaTemp = null;
 
 // ============================================================
-// UTILIDAD: NORMALIZADOR INSENSIBLE A TILDES
+// UTILIDADES CRÍTICAS: BLINDAJE DE LISTENERS Y TILDES
 // ============================================================
 function normalizarTexto(txt) {
   if (!txt) return '';
   return txt.toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+}
+
+// Asignador seguro de eventos: si un botón no existe en el DOM, no rompe el script
+function safeOn(id, event, handler) {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener(event, handler);
 }
 
 // 1. REGISTRO DE SERVICE WORKER PARA PWA
@@ -45,13 +50,14 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-// 2. GESTIÓN DE PESTAÑAS
+// 2. GESTIÓN INMEDIATA DE PESTAÑAS (NUNCA SE CONGELA)
 function activarPestanas() {
   const botones = document.querySelectorAll('.tab-btn');
   const contenidos = document.querySelectorAll('.tab-content');
 
   botones.forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.onclick = (e) => {
+      e.preventDefault();
       botones.forEach(b => b.classList.remove('active'));
       contenidos.forEach(c => c.classList.remove('active'));
 
@@ -59,16 +65,14 @@ function activarPestanas() {
       const targetId = btn.getAttribute('data-tab');
       const targetContenido = document.getElementById(targetId);
       if (targetContenido) targetContenido.classList.add('active');
-    });
+    };
   });
 }
 
-// 3. INICIALIZACIÓN DE INDEXEDDB CON PROMESA BLINDADA
-function asegurarDB() {
-  if (db) return Promise.resolve(db);
-  if (dbInicializadaPromesa) return dbInicializadaPromesa;
-
-  dbInicializadaPromesa = new Promise((resolve, reject) => {
+// 3. INICIALIZACIÓN BLINDADA DE INDEXEDDB
+function conectarDB() {
+  return new Promise((resolve, reject) => {
+    if (db) return resolve(db);
     const req = indexedDB.open(DB_NAME, DB_VERSION);
 
     req.onupgradeneeded = (e) => {
@@ -90,6 +94,10 @@ function asegurarDB() {
 
     req.onsuccess = (e) => {
       db = e.target.result;
+      db.onversionchange = () => {
+        db.close();
+        db = null;
+      };
       resolve(db);
     };
 
@@ -98,8 +106,6 @@ function asegurarDB() {
       reject(e.target.error);
     };
   });
-
-  return dbInicializadaPromesa;
 }
 
 async function cargarTodo() {
@@ -109,37 +115,41 @@ async function cargarTodo() {
   poblarFormMetas();
   poblarPinGuardado();
 
-  const database = await asegurarDB();
-  const tx = database.transaction(['config', 'alimentos', 'recetas'], 'readonly');
+  try {
+    const database = await conectarDB();
+    const tx = database.transaction(['config', 'alimentos', 'recetas'], 'readonly');
 
-  const reqMetas = tx.objectStore('config').get('metas_diarias');
-  reqMetas.onsuccess = () => {
-    if (reqMetas.result && reqMetas.result.valor) {
-      metasActuales = reqMetas.result.valor;
-      poblarFormMetas();
-    }
-  };
+    const reqMetas = tx.objectStore('config').get('metas_diarias');
+    reqMetas.onsuccess = () => {
+      if (reqMetas.result && reqMetas.result.valor) {
+        metasActuales = reqMetas.result.valor;
+        poblarFormMetas();
+      }
+    };
 
-  const reqCat = tx.objectStore('config').get('categorias');
-  reqCat.onsuccess = () => {
-    if (reqCat.result && reqCat.result.valor) {
-      categoriasCache = reqCat.result.valor;
-    }
-  };
+    const reqCat = tx.objectStore('config').get('categorias');
+    reqCat.onsuccess = () => {
+      if (reqCat.result && reqCat.result.valor) {
+        categoriasCache = reqCat.result.valor;
+      }
+    };
 
-  tx.objectStore('alimentos').getAll().onsuccess = (e) => {
-    alimentosCache = e.target.result || [];
-    actualizarVistasAlimentos();
-    actualizarSelectoresGlobales();
-  };
+    tx.objectStore('alimentos').getAll().onsuccess = (e) => {
+      alimentosCache = e.target.result || [];
+      actualizarVistasAlimentos();
+      actualizarSelectoresGlobales();
+    };
 
-  tx.objectStore('recetas').getAll().onsuccess = (e) => {
-    recetasCache = e.target.result || [];
-    actualizarVistasRecetas();
-    actualizarSelectoresGlobales();
-  };
+    tx.objectStore('recetas').getAll().onsuccess = (e) => {
+      recetasCache = e.target.result || [];
+      actualizarVistasRecetas();
+      actualizarSelectoresGlobales();
+    };
 
-  tx.oncomplete = () => cargarDiario();
+    tx.oncomplete = () => cargarDiario();
+  } catch (err) {
+    console.error('Error al abrir la base local:', err);
+  }
 }
 
 /* ============================================================
@@ -154,19 +164,13 @@ function poblarPinGuardado() {
   if (inputPin) inputPin.value = obtenerPin();
 }
 
-const btnGuardarPin = document.getElementById('btn-sync-guardar-pin');
-if (btnGuardarPin) {
-  btnGuardarPin.addEventListener('click', () => {
-    const val = document.getElementById('sync-input-pin').value.trim();
-    if (!val) {
-      alert('Ingresa un PIN válido.');
-      return;
-    }
-    localStorage.setItem('coffeebreak_user_pin', val);
-    alert('✓ PIN guardado en este dispositivo.');
-    sincronizarConLaNube();
-  });
-}
+safeOn('btn-sync-guardar-pin', 'click', () => {
+  const val = document.getElementById('sync-input-pin').value.trim();
+  if (!val) return alert('Ingresa un PIN válido.');
+  localStorage.setItem('coffeebreak_user_pin', val);
+  alert('✓ PIN guardado en este dispositivo.');
+  sincronizarConLaNube();
+});
 
 async function subirDatosALaNube(mostrarAlerta = true) {
   const pin = obtenerPin();
@@ -188,7 +192,7 @@ async function subirDatosALaNube(mostrarAlerta = true) {
         'Content-Type': 'application/json',
         'X-User-Pin': pin
       },
-      body: JSON.stringify({ data })
+      body: JSON.stringify({ pin, data })
     });
 
     const resJson = await resp.json();
@@ -218,7 +222,7 @@ async function descargarDatosDeLaNube(mostrarAlerta = true) {
   if (statusMsg) statusMsg.textContent = 'Consultando la nube...';
 
   try {
-    const resp = await fetch(`${WORKER_CHEF_URL}/sync/pull`, {
+    const resp = await fetch(`${WORKER_CHEF_URL}/sync/pull?pin=${encodeURIComponent(pin)}`, {
       method: 'GET',
       headers: { 'X-User-Pin': pin }
     });
@@ -257,14 +261,9 @@ function sincronizarConLaNubeSilencioso() {
   }
 }
 
-const btnSubirNube = document.getElementById('btn-sync-subir-nube');
-if (btnSubirNube) btnSubirNube.addEventListener('click', () => subirDatosALaNube(true));
-
-const btnDescargarNube = document.getElementById('btn-sync-descargar-nube');
-if (btnDescargarNube) btnDescargarNube.addEventListener('click', () => descargarDatosDeLaNube(true));
-
-const syncIndicator = document.getElementById('sync-status-indicator');
-if (syncIndicator) syncIndicator.addEventListener('click', () => sincronizarConLaNube());
+safeOn('btn-sync-subir-nube', 'click', () => subirDatosALaNube(true));
+safeOn('btn-sync-descargar-nube', 'click', () => descargarDatosDeLaNube(true));
+safeOn('sync-status-indicator', 'click', () => sincronizarConLaNube());
 
 /* ============================================================
    SECCIÓN: FILTROS Y SELECTORES INTELIGENTES (SIN TILDES)
@@ -296,28 +295,19 @@ function poblarSelectRecetasPlantilla() {
   });
 }
 
-const checkUrgente = document.getElementById('ai-check-urgente');
-const contUrgente = document.getElementById('ai-contenedor-urgente');
-if (checkUrgente && contUrgente) {
-  checkUrgente.addEventListener('change', () => {
-    if (checkUrgente.checked) contUrgente.classList.remove('hidden');
-    else contUrgente.classList.add('hidden');
-  });
-}
+safeOn('ai-check-urgente', 'change', () => {
+  const check = document.getElementById('ai-check-urgente');
+  const cont = document.getElementById('ai-contenedor-urgente');
+  if (check && cont) cont.classList.toggle('hidden', !check.checked);
+});
 
-const checkReplicar = document.getElementById('ai-check-replicar');
-const contReplicar = document.getElementById('ai-contenedor-replicar');
-if (checkReplicar && contReplicar) {
-  checkReplicar.addEventListener('change', () => {
-    if (checkReplicar.checked) contReplicar.classList.remove('hidden');
-    else contReplicar.classList.add('hidden');
-  });
-}
+safeOn('ai-check-replicar', 'change', () => {
+  const check = document.getElementById('ai-check-replicar');
+  const cont = document.getElementById('ai-contenedor-replicar');
+  if (check && cont) cont.classList.toggle('hidden', !check.checked);
+});
 
-const calcFiltro = document.getElementById('calc-filtro-nombre');
-if (calcFiltro) {
-  calcFiltro.addEventListener('input', () => poblarSelectCalculadora(calcFiltro.value));
-}
+safeOn('calc-filtro-nombre', 'input', (e) => poblarSelectCalculadora(e.target.value));
 
 function poblarSelectCalculadora(filtro = '') {
   const select = document.getElementById('select-alimento');
@@ -342,10 +332,7 @@ function poblarSelectCalculadora(filtro = '') {
   }
 }
 
-const recetaFiltro = document.getElementById('receta-filtro-ingrediente');
-if (recetaFiltro) {
-  recetaFiltro.addEventListener('input', () => poblarSelectRecetaIngredientes(recetaFiltro.value));
-}
+safeOn('receta-filtro-ingrediente', 'input', (e) => poblarSelectRecetaIngredientes(e.target.value));
 
 function poblarSelectRecetaIngredientes(filtro = '') {
   const select = document.getElementById('receta-select-alimento');
@@ -357,10 +344,7 @@ function poblarSelectRecetaIngredientes(filtro = '') {
   alisFiltrados.forEach(a => select.appendChild(new Option(`${a.nombre} (${a.kcal} kcal/100g)`, a.id)));
 }
 
-const buscadorAlisGuardados = document.getElementById('buscador-alimentos-guardados');
-if (buscadorAlisGuardados) {
-  buscadorAlisGuardados.addEventListener('input', () => renderizarListaAlimentosGuardados(buscadorAlisGuardados.value));
-}
+safeOn('buscador-alimentos-guardados', 'input', (e) => renderizarListaAlimentosGuardados(e.target.value));
 
 function renderizarListaAlimentosGuardados(filtro = '') {
   const lista = document.getElementById('lista-alimentos');
@@ -378,8 +362,8 @@ function renderizarListaAlimentosGuardados(filtro = '') {
     const li = document.createElement('li');
     li.innerHTML = `
       <div>
-        <strong>${a.nombre}</strong>${a.marca ? `(${a.marca})` : ''}<br>
-        <small style="color: var(--text-muted);">${a.kcal} kcal \vert{} P:${a.proteinas}g | C: ${a.carbohidratos}g \vert{} G:${a.grasas}g</small>
+        <strong>${a.nombre}</strong> ${a.marca ? `(${a.marca})` : ''}<br>
+        <small style="color: var(--text-muted);">${a.kcal} kcal | P: ${a.proteinas}g | C: ${a.carbohidratos}g | G: ${a.grasas}g</small>
       </div>
       <button class="btn-del" onclick="eliminarAlimento(${a.id})">Borrar</button>
     `;
@@ -387,10 +371,7 @@ function renderizarListaAlimentosGuardados(filtro = '') {
   });
 }
 
-const buscadorRecsGuardadas = document.getElementById('buscador-recetas-guardadas');
-if (buscadorRecsGuardadas) {
-  buscadorRecsGuardadas.addEventListener('input', () => renderizarListaRecetasGuardadas(buscadorRecsGuardadas.value));
-}
+safeOn('buscador-recetas-guardadas', 'input', (e) => renderizarListaRecetasGuardadas(e.target.value));
 
 function renderizarListaRecetasGuardadas(filtro = '') {
   const lista = document.getElementById('lista-recetas');
@@ -409,7 +390,7 @@ function renderizarListaRecetasGuardadas(filtro = '') {
     li.innerHTML = `
       <div>
         <strong>${r.nombre}</strong><br>
-        <small style="color: var(--text-muted);">${r.kcalPor100g.toFixed(1)} kcal/100g (Total: ${r.pesoTotal}g${r.pesoCocinadoFinal ? `[Cocido: ${r.pesoCocinadoFinal}g]` : ''} - ${r.kcalTotal.toFixed(0)} kcal)</small>
+        <small style="color: var(--text-muted);">${r.kcalPor100g.toFixed(1)} kcal/100g (Total: ${r.pesoTotal}g ${r.pesoCocinadoFinal ? `[Cocido: ${r.pesoCocinadoFinal}g]` : ''} - ${r.kcalTotal.toFixed(0)} kcal)</small>
       </div>
       <div style="display: flex; gap: 0.4rem;">
         <button class="btn-secondary" onclick="cargarRecetaParaEditar(${r.id})">Editar</button>
@@ -423,10 +404,7 @@ function renderizarListaRecetasGuardadas(filtro = '') {
 /* ============================================================
    SECCIÓN: CONVERSOR INVERSO (PESO COCINADO A CRUDO)
    ============================================================ */
-const convFiltroAli = document.getElementById('conv-filtro-alimento');
-if (convFiltroAli) {
-  convFiltroAli.addEventListener('input', () => poblarSelectConversorAlimentos(convFiltroAli.value));
-}
+safeOn('conv-filtro-alimento', 'input', (e) => poblarSelectConversorAlimentos(e.target.value));
 
 function poblarSelectConversorAlimentos(filtro = '') {
   const sel = document.getElementById('conv-select-alimento');
@@ -438,7 +416,7 @@ function poblarSelectConversorAlimentos(filtro = '') {
   filtrados.forEach(a => sel.appendChild(new Option(`${a.nombre} (${a.kcal} kcal/100g en crudo)`, a.id)));
 }
 
-document.getElementById('btn-calcular-conversion').addEventListener('click', () => {
+safeOn('btn-calcular-conversion', 'click', () => {
   const aliId = parseInt(document.getElementById('conv-select-alimento').value, 10);
   const crudoTotal = parseFloat(document.getElementById('conv-peso-crudo-total').value) || 0;
   const cocidoTotal = parseFloat(document.getElementById('conv-peso-cocido-total').value) || 0;
@@ -478,10 +456,10 @@ document.getElementById('btn-calcular-conversion').addEventListener('click', () 
   document.getElementById('conv-res-carbs').textContent = carbsAporte.toFixed(1);
   document.getElementById('conv-res-grasas').textContent = grasasAporte.toFixed(1);
 
-  boxRes.classList.remove('hidden');
+  if (boxRes) boxRes.classList.remove('hidden');
 });
 
-document.getElementById('btn-agregar-conversion-diario').addEventListener('click', async () => {
+safeOn('btn-agregar-conversion-diario', 'click', async () => {
   if (!conversionCalculadaTemp) return;
   const cat = prompt(`¿A qué categoría agregarlo? (${categoriasCache.join(', ')}):`, categoriasCache[0]);
   if (!cat || !categoriasCache.includes(cat.trim())) return;
@@ -497,7 +475,7 @@ document.getElementById('btn-agregar-conversion-diario').addEventListener('click
     grasas: conversionCalculadaTemp.grasas
   };
 
-  const database = await asegurarDB();
+  const database = await conectarDB();
   const tx = database.transaction(['diario'], 'readwrite');
   tx.objectStore('diario').add(entrada);
   tx.oncomplete = () => {
@@ -560,7 +538,7 @@ if (inputFoto) {
     const reader = new FileReader();
     reader.onload = async (event) => {
       imgPreview.src = event.target.result;
-      ocrContainer.classList.remove('hidden');
+      if (ocrContainer) ocrContainer.classList.remove('hidden');
 
       imgPreview.onload = async () => {
         if (typeof Tesseract === 'undefined') {
@@ -569,16 +547,16 @@ if (inputFoto) {
         }
 
         try {
-          ocrStatus.textContent = 'Normalizando imagen...';
+          if (ocrStatus) ocrStatus.textContent = 'Normalizando imagen...';
           const imagenOptimizada = optimizarFotoCelular(imgPreview);
 
-          ocrStatus.textContent = 'Analizando tabla...';
+          if (ocrStatus) ocrStatus.textContent = 'Analizando tabla...';
           const result = await Tesseract.recognize(
             imagenOptimizada,
             'spa',
             {
               logger: m => {
-                if (m.status === 'recognizing text') {
+                if (m.status === 'recognizing text' && ocrStatus) {
                   ocrStatus.textContent = `Leyendo tabla: ${Math.round(m.progress * 100)}%`;
                 }
               }
@@ -588,12 +566,12 @@ if (inputFoto) {
           const texto = result.data.text;
           if (ocrRawText) ocrRawText.textContent = texto;
 
-          ocrStatus.textContent = '✓ Lectura lista. Comprueba los campos abajo:';
+          if (ocrStatus) ocrStatus.textContent = '✓ Lectura lista. Comprueba los campos abajo:';
           parsearTablaNutricionalRobusto(texto);
 
         } catch (err) {
           console.error('Error OCR:', err);
-          ocrStatus.textContent = 'Error al leer la imagen. Ingresa los datos manualmente.';
+          if (ocrStatus) ocrStatus.textContent = 'Error al leer la imagen. Ingresa los datos manualmente.';
         }
       };
     };
@@ -673,7 +651,8 @@ function parsearTablaNutricionalRobusto(texto) {
   }
 
   const asignar = (id, val) => {
-    if (val !== null) document.getElementById(id).value = Number(val.toFixed(2));
+    const el = document.getElementById(id);
+    if (el && val !== null) el.value = Number(val.toFixed(2));
   };
 
   asignar('kcal', valores.kcal);
@@ -689,7 +668,8 @@ function parsearTablaNutricionalRobusto(texto) {
   asignar('sodio', valores.sodio);
   asignar('colesterol', valores.colesterol);
 
-  document.getElementById('form-alimento').scrollIntoView({ behavior: 'smooth' });
+  const formAli = document.getElementById('form-alimento');
+  if (formAli) formAli.scrollIntoView({ behavior: 'smooth' });
 }
 
 /* ============================================================
@@ -699,7 +679,7 @@ function actualizarVistasAlimentos() {
   renderizarListaAlimentosGuardados();
 }
 
-document.getElementById('form-alimento').addEventListener('submit', async (e) => {
+safeOn('form-alimento', 'submit', async (e) => {
   e.preventDefault();
   const parseVal = (id) => parseFloat(document.getElementById(id).value) || 0;
 
@@ -720,7 +700,7 @@ document.getElementById('form-alimento').addEventListener('submit', async (e) =>
     colesterol: parseVal('colesterol')
   };
 
-  const database = await asegurarDB();
+  const database = await conectarDB();
   const tx = database.transaction(['alimentos'], 'readwrite');
   tx.objectStore('alimentos').add(alimento);
   tx.oncomplete = () => {
@@ -733,7 +713,7 @@ document.getElementById('form-alimento').addEventListener('submit', async (e) =>
 });
 
 async function recargarAlimentos() {
-  const database = await asegurarDB();
+  const database = await conectarDB();
   database.transaction(['alimentos'], 'readonly').objectStore('alimentos').getAll().onsuccess = (e) => {
     alimentosCache = e.target.result || [];
     actualizarVistasAlimentos();
@@ -743,7 +723,7 @@ async function recargarAlimentos() {
 
 window.eliminarAlimento = async function(id) {
   if (!confirm('¿Eliminar este alimento?')) return;
-  const database = await asegurarDB();
+  const database = await conectarDB();
   const tx = database.transaction(['alimentos'], 'readwrite');
   tx.objectStore('alimentos').delete(id);
   tx.oncomplete = () => {
@@ -753,9 +733,13 @@ window.eliminarAlimento = async function(id) {
 };
 
 function calcularGramos() {
-  const val = document.getElementById('select-alimento').value;
-  const gramos = parseFloat(document.getElementById('input-gramos').value) || 0;
+  const sel = document.getElementById('select-alimento');
+  const gr = document.getElementById('input-gramos');
   const box = document.getElementById('resultado-calculo');
+  if (!sel || !gr || !box) return;
+
+  const val = sel.value;
+  const gramos = parseFloat(gr.value) || 0;
 
   if (!val || gramos <= 0) {
     box.classList.add('hidden');
@@ -789,13 +773,13 @@ function calcularGramos() {
   box.classList.remove('hidden');
 }
 
-document.getElementById('select-alimento').addEventListener('change', calcularGramos);
-document.getElementById('input-gramos').addEventListener('input', calcularGramos);
+safeOn('select-alimento', 'change', calcularGramos);
+safeOn('input-gramos', 'input', calcularGramos);
 
 /* ============================================================
    SECCIÓN: RECETAS COMPUESTAS (CON AJUSTE DE PESO COCINADO)
    ============================================================ */
-document.getElementById('btn-agregar-ingrediente').addEventListener('click', () => {
+safeOn('btn-agregar-ingrediente', 'click', () => {
   const aliId = parseInt(document.getElementById('receta-select-alimento').value, 10);
   const gramos = parseFloat(document.getElementById('receta-gramos-ingrediente').value) || 0;
 
@@ -814,12 +798,12 @@ function actualizarVistaBorradorReceta() {
   const preview = document.getElementById('receta-totales-preview');
 
   if (recetaBorrador.length === 0) {
-    lista.innerHTML = '<li style="color: var(--text-muted);">Sin ingredientes aún.</li>';
-    preview.classList.add('hidden');
+    if (lista) lista.innerHTML = '<li style="color: var(--text-muted);">Sin ingredientes aún.</li>';
+    if (preview) preview.classList.add('hidden');
     return;
   }
 
-  lista.innerHTML = '';
+  if (lista) lista.innerHTML = '';
   let totKcal = 0, totProt = 0, totCarbs = 0, totGrasas = 0, totPeso = 0;
 
   recetaBorrador.forEach((ing, idx) => {
@@ -832,12 +816,14 @@ function actualizarVistaBorradorReceta() {
       totGrasas += ali.grasas * f;
       totPeso += ing.gramos;
 
-      const li = document.createElement('li');
-      li.innerHTML = `
-        <span>${ing.nombre} - ${ing.gramos}g (${(ali.kcal * f).toFixed(1)} kcal)</span>
-        <button class="btn-del" onclick="eliminarIngredienteReceta(${idx})">x</button>
-      `;
-      lista.appendChild(li);
+      if (lista) {
+        const li = document.createElement('li');
+        li.innerHTML = `
+          <span>${ing.nombre} - ${ing.gramos}g (${(ali.kcal * f).toFixed(1)} kcal)</span>
+          <button class="btn-del" onclick="eliminarIngredienteReceta(${idx})">x</button>
+        `;
+        lista.appendChild(li);
+      }
     }
   });
 
@@ -846,7 +832,7 @@ function actualizarVistaBorradorReceta() {
   document.getElementById('receta-total-prot').textContent = totProt.toFixed(1);
   document.getElementById('receta-total-carbs').textContent = totCarbs.toFixed(1);
   document.getElementById('receta-total-grasas').textContent = totGrasas.toFixed(1);
-  preview.classList.remove('hidden');
+  if (preview) preview.classList.remove('hidden');
 }
 
 window.eliminarIngredienteReceta = function(idx) {
@@ -871,7 +857,7 @@ window.cargarRecetaParaEditar = function(id) {
   document.getElementById('tab-recetas').scrollIntoView({ behavior: 'smooth' });
 };
 
-document.getElementById('btn-cancelar-edicion-receta').addEventListener('click', () => {
+safeOn('btn-cancelar-edicion-receta', 'click', () => {
   resetearFormularioReceta();
 });
 
@@ -886,7 +872,7 @@ function resetearFormularioReceta() {
   actualizarVistaBorradorReceta();
 }
 
-document.getElementById('btn-guardar-receta').addEventListener('click', async () => {
+safeOn('btn-guardar-receta', 'click', async () => {
   const nombre = document.getElementById('receta-nombre').value.trim();
   if (!nombre || recetaBorrador.length === 0) {
     alert('Ingresa un nombre y al menos un ingrediente.');
@@ -921,7 +907,7 @@ document.getElementById('btn-guardar-receta').addEventListener('click', async ()
     grasasPor100g: pesoReferencia100g > 0 ? (totGrasas / pesoReferencia100g) * 100 : 0
   };
 
-  const database = await asegurarDB();
+  const database = await conectarDB();
   const tx = database.transaction(['recetas'], 'readwrite');
   const store = tx.objectStore('recetas');
 
@@ -941,7 +927,7 @@ document.getElementById('btn-guardar-receta').addEventListener('click', async ()
 });
 
 async function recargarRecetas() {
-  const database = await asegurarDB();
+  const database = await conectarDB();
   database.transaction(['recetas'], 'readonly').objectStore('recetas').getAll().onsuccess = (e) => {
     recetasCache = e.target.result || [];
     actualizarVistasRecetas();
@@ -955,7 +941,7 @@ function actualizarVistasRecetas() {
 
 window.eliminarReceta = async function(id) {
   if (!confirm('¿Eliminar esta preparación?')) return;
-  const database = await asegurarDB();
+  const database = await conectarDB();
   const tx = database.transaction(['recetas'], 'readwrite');
   tx.objectStore('recetas').delete(id);
   tx.oncomplete = () => {
@@ -981,7 +967,7 @@ function poblarFormMetas() {
   if (eMetaKcalDash) eMetaKcalDash.textContent = metasActuales.kcal;
 }
 
-document.getElementById('form-metas').addEventListener('submit', async (e) => {
+safeOn('form-metas', 'submit', async (e) => {
   e.preventDefault();
   metasActuales = {
     kcal: parseFloat(document.getElementById('meta-kcal').value) || 0,
@@ -990,7 +976,7 @@ document.getElementById('form-metas').addEventListener('submit', async (e) => {
     grasas: parseFloat(document.getElementById('meta-grasas').value) || 0
   };
 
-  const database = await asegurarDB();
+  const database = await conectarDB();
   const tx = database.transaction(['config'], 'readwrite');
   tx.objectStore('config').put({ clave: 'metas_diarias', valor: metasActuales });
   tx.oncomplete = () => {
@@ -1003,16 +989,16 @@ document.getElementById('form-metas').addEventListener('submit', async (e) => {
 /* ============================================================
    SECCIÓN: DIARIO NUTRICIONAL (ALTA VISIBILIDAD)
    ============================================================ */
-document.getElementById('diario-fecha').addEventListener('change', (e) => {
+safeOn('diario-fecha', 'change', (e) => {
   fechaSeleccionada = e.target.value;
   cargarDiario();
 });
 
-document.getElementById('btn-nueva-categoria').addEventListener('click', async () => {
+safeOn('btn-nueva-categoria', 'click', async () => {
   const nom = prompt('Nombre de la categoría (Ej: Merienda, Pre-entreno):');
   if (nom && !categoriasCache.includes(nom.trim())) {
     categoriasCache.push(nom.trim());
-    const database = await asegurarDB();
+    const database = await conectarDB();
     const tx = database.transaction(['config'], 'readwrite');
     tx.objectStore('config').put({ clave: 'categorias', valor: categoriasCache });
     tx.oncomplete = () => {
@@ -1023,7 +1009,7 @@ document.getElementById('btn-nueva-categoria').addEventListener('click', async (
 });
 
 async function cargarDiario() {
-  const database = await asegurarDB();
+  const database = await conectarDB();
   const tx = database.transaction(['diario'], 'readonly');
   const index = tx.objectStore('diario').index('fecha');
   const req = index.getAll(IDBKeyRange.only(fechaSeleccionada));
@@ -1063,7 +1049,7 @@ function renderizarEstructuraDiario(entradas) {
         <div class="comida-item">
           <div>
             <strong>${item.nombre}</strong> (${item.gramos}g)<br>
-            <small>${item.kcal.toFixed(0)} kcal • P: ${item.proteinas.toFixed(1)}g | C: ${item.carbohidratos.toFixed(1)}g \vert{} G:${item.grasas.toFixed(1)}g</small>
+            <small>${item.kcal.toFixed(0)} kcal • P: ${item.proteinas.toFixed(1)}g | C: ${item.carbohidratos.toFixed(1)}g | G: ${item.grasas.toFixed(1)}g</small>
           </div>
           <button class="btn-del" onclick="eliminarEntradaDiario(${item.id})">x</button>
         </div>
@@ -1108,8 +1094,9 @@ function actualizarDashboard(kCons, pCons, cCons, gCons) {
   const setMacro = (idCol, idRest, idSub, rest, cons, meta) => {
     const rElem = document.getElementById(idRest);
     const sElem = document.getElementById(idSub);
+    if (!rElem || !sElem) return;
     rElem.textContent = `${rest.toFixed(1)}g`;
-    sElem.textContent = `${cons.toFixed(1)} /${meta}g`;
+    sElem.textContent = `${cons.toFixed(1)} / ${meta}g`;
     if (rest < 0) rElem.classList.add('alerta-exceso');
     else rElem.classList.remove('alerta-exceso');
   };
@@ -1133,17 +1120,16 @@ window.abrirModalAgregarDiario = function(cat) {
 };
 
 window.cerrarModalDiario = function() {
-  document.getElementById('modal-agregar-diario').classList.add('hidden');
+  const modal = document.getElementById('modal-agregar-diario');
+  if (modal) modal.classList.add('hidden');
   categoriaModalDiario = null;
 };
 
-const diarioBuscador = document.getElementById('diario-buscador');
-if (diarioBuscador) {
-  diarioBuscador.addEventListener('input', () => poblarSelectModalDiario(diarioBuscador.value));
-}
+safeOn('diario-buscador', 'input', (e) => poblarSelectModalDiario(e.target.value));
 
 function poblarSelectModalDiario(filtro = '') {
   const sel = document.getElementById('diario-select-item');
+  if (!sel) return;
   sel.innerHTML = '';
   const fNorm = normalizarTexto(filtro);
 
@@ -1154,7 +1140,7 @@ function poblarSelectModalDiario(filtro = '') {
   recs.forEach(r => sel.appendChild(new Option(`${r.nombre} [Receta] (${r.kcalPor100g.toFixed(1)} kcal/100g)`, `rec_${r.id}`)));
 }
 
-document.getElementById('btn-confirmar-agregar-diario').addEventListener('click', async () => {
+safeOn('btn-confirmar-agregar-diario', 'click', async () => {
   const itemVal = document.getElementById('diario-select-item').value;
   const gramos = parseFloat(document.getElementById('diario-input-gramos').value) || 0;
 
@@ -1186,7 +1172,7 @@ document.getElementById('btn-confirmar-agregar-diario').addEventListener('click'
     grasas: g100 * f
   };
 
-  const database = await asegurarDB();
+  const database = await conectarDB();
   const tx = database.transaction(['diario'], 'readwrite');
   tx.objectStore('diario').add(entrada);
   tx.oncomplete = () => {
@@ -1197,7 +1183,7 @@ document.getElementById('btn-confirmar-agregar-diario').addEventListener('click'
 });
 
 window.eliminarEntradaDiario = async function(id) {
-  const database = await asegurarDB();
+  const database = await conectarDB();
   const tx = database.transaction(['diario'], 'readwrite');
   tx.objectStore('diario').delete(id);
   tx.oncomplete = () => {
@@ -1209,18 +1195,10 @@ window.eliminarEntradaDiario = async function(id) {
 /* ============================================================
    SECCIÓN: CHEF IA CON GEMINI + NUEVAS REGLAS TÉCNICAS
    ============================================================ */
-const selectAiObjetivo = document.getElementById('ai-objetivo-calorico');
-const contAiKcalManual = document.getElementById('contenedor-ai-kcal-manual');
-
-if (selectAiObjetivo) {
-  selectAiObjetivo.addEventListener('change', () => {
-    if (selectAiObjetivo.value === 'manual') {
-      contAiKcalManual.classList.remove('hidden');
-    } else {
-      contAiKcalManual.classList.add('hidden');
-    }
-  });
-}
+safeOn('ai-objetivo-calorico', 'change', (e) => {
+  const cont = document.getElementById('contenedor-ai-kcal-manual');
+  if (cont) cont.classList.toggle('hidden', e.target.value !== 'manual');
+});
 
 async function fetchConReintento(url, opciones, maxReintentos = 3) {
   const aiStatus = document.getElementById('ai-status');
@@ -1232,7 +1210,7 @@ async function fetchConReintento(url, opciones, maxReintentos = 3) {
       if (resp.ok) return data;
 
       if ((resp.status === 503 || resp.status === 429) && intento < maxReintentos) {
-        aiStatus.textContent = `Servidores con alta demanda, reintentando automáticamente (${intento}/${maxReintentos})...`;
+        if (aiStatus) aiStatus.textContent = `Servidores con alta demanda, reintentando automáticamente (${intento}/${maxReintentos})...`;
         await new Promise(r => setTimeout(r, 2000 * intento));
         continue;
       }
@@ -1246,7 +1224,7 @@ async function fetchConReintento(url, opciones, maxReintentos = 3) {
   }
 }
 
-document.getElementById('btn-generar-receta-ia').addEventListener('click', async () => {
+safeOn('btn-generar-receta-ia', 'click', async () => {
   if (alimentosCache.length < 2) {
     alert('Debes tener al menos 2 o 3 alimentos guardados en tu catálogo para que la IA arme una preparación.');
     return;
@@ -1255,7 +1233,8 @@ document.getElementById('btn-generar-receta-ia').addEventListener('click', async
   const rest = window.restantesGlobales || { kcal: 0, proteinas: 0, carbohidratos: 0, grasas: 0 };
   let metaKcal = 0;
 
-  if (selectAiObjetivo.value === 'manual') {
+  const selObj = document.getElementById('ai-objetivo-calorico');
+  if (selObj && selObj.value === 'manual') {
     metaKcal = parseFloat(document.getElementById('ai-kcal-manual').value) || 0;
     if (metaKcal <= 0) return alert('Ingresa un valor válido de Kcal manuales.');
   } else {
@@ -1265,13 +1244,14 @@ document.getElementById('btn-generar-receta-ia').addEventListener('click', async
     }
   }
 
-  const tipoComida = document.getElementById('ai-tipo-comida').value;
-  const metodoCoccion = document.getElementById('ai-metodo-coccion').value;
-  const protDeseada = parseFloat(document.getElementById('ai-prot-deseada').value) || 0;
-  const antojoExtra = document.getElementById('ai-antojo-extra').value.trim();
+  const tipoComida = document.getElementById('ai-tipo-comida')?.value || 'Almuerzo salado';
+  const metodoCoccion = document.getElementById('ai-metodo-coccion')?.value || 'Cualquiera';
+  const protDeseada = parseFloat(document.getElementById('ai-prot-deseada')?.value) || 0;
+  const antojoExtra = document.getElementById('ai-antojo-extra')?.value.trim() || '';
 
   let instruccionReplicar = '';
-  if (document.getElementById('ai-check-replicar').checked) {
+  const checkRep = document.getElementById('ai-check-replicar');
+  if (checkRep && checkRep.checked) {
     const recId = parseInt(document.getElementById('ai-select-receta-plantilla').value, 10);
     const recBase = recetasCache.find(r => r.id === recId);
     if (recBase) {
@@ -1281,7 +1261,8 @@ document.getElementById('btn-generar-receta-ia').addEventListener('click', async
   }
 
   let instruccionUrgente = '';
-  if (document.getElementById('ai-check-urgente').checked) {
+  const checkUrg = document.getElementById('ai-check-urgente');
+  if (checkUrg && checkUrg.checked) {
     const idUrg = parseInt(document.getElementById('ai-select-ingrediente-urgente').value, 10);
     const grUrg = parseFloat(document.getElementById('ai-gramos-urgente').value) || 0;
     const aliUrg = alimentosCache.find(a => a.id === idUrg);
@@ -1293,14 +1274,16 @@ document.getElementById('btn-generar-receta-ia').addEventListener('click', async
   }
 
   const despensaTexto = alimentosCache.map(a => 
-    `{id: ${a.id}, nombre: "${a.nombre}", kcal100: ${a.kcal}, p100:${a.proteinas}, c100: ${a.carbohidratos}, g100:${a.grasas}}`
+    `{id: ${a.id}, nombre: "${a.nombre}", kcal100: ${a.kcal}, p100: ${a.proteinas}, c100: ${a.carbohidratos}, g100: ${a.grasas}}`
   ).join(',\n');
 
   const aiStatus = document.getElementById('ai-status');
   const aiBox = document.getElementById('ai-resultado-receta');
-  aiStatus.textContent = 'El Chef Gemini está diseñando tu receta culinaria con técnica profesional...';
-  aiStatus.classList.remove('hidden');
-  aiBox.classList.add('hidden');
+  if (aiStatus) {
+    aiStatus.textContent = 'El Chef Gemini está diseñando tu receta culinaria con técnica profesional...';
+    aiStatus.classList.remove('hidden');
+  }
+  if (aiBox) aiBox.classList.add('hidden');
 
   const promptSistema = `
 Actúa como un Chef Ejecutivo y Nutricionista de alta cocina y nutrición deportiva.
@@ -1358,13 +1341,15 @@ ${antojoExtra ? `7. Preferencia o antojo del usuario: "${antojoExtra}".` : ''}
 
     renderizarRecetaIAEscalada(1);
 
-    aiStatus.classList.add('hidden');
-    aiBox.classList.remove('hidden');
-    aiBox.scrollIntoView({ behavior: 'smooth' });
+    if (aiStatus) aiStatus.classList.add('hidden');
+    if (aiBox) {
+      aiBox.classList.remove('hidden');
+      aiBox.scrollIntoView({ behavior: 'smooth' });
+    }
 
   } catch (err) {
     console.error(err);
-    aiStatus.textContent = `❌ ${err.message}`;
+    if (aiStatus) aiStatus.textContent = `❌ ${err.message}`;
   }
 });
 
@@ -1429,35 +1414,40 @@ function renderizarRecetaIAEscalada(factor) {
   }
 
   const ulIng = document.getElementById('ai-receta-ingredientes');
-  ulIng.innerHTML = '';
-  ingredientesEscalados.forEach(ing => {
-    const li = document.createElement('li');
-    li.innerHTML = `<span><strong>${ing.nombre}</strong></span> <span class="sug-gramos">${ing.gramos.toFixed(1)} g</span> <small>(${ing.kcalAporte.toFixed(0)} kcal)</small>`;
-    ulIng.appendChild(li);
-  });
+  if (ulIng) {
+    ulIng.innerHTML = '';
+    ingredientesEscalados.forEach(ing => {
+      const li = document.createElement('li');
+      li.innerHTML = `<span><strong>${ing.nombre}</strong></span> <span class="sug-gramos">${ing.gramos.toFixed(1)} g</span> <small>(${ing.kcalAporte.toFixed(0)} kcal)</small>`;
+      ulIng.appendChild(li);
+    });
+  }
 
   const olPasos = document.getElementById('ai-receta-pasos');
-  olPasos.innerHTML = '';
-  (recetaIABaseOriginal.pasos || []).forEach(paso => {
-    const li = document.createElement('li');
-    li.textContent = paso;
-    olPasos.appendChild(li);
-  });
+  if (olPasos) {
+    olPasos.innerHTML = '';
+    (recetaIABaseOriginal.pasos || []).forEach(paso => {
+      const li = document.createElement('li');
+      li.textContent = paso;
+      olPasos.appendChild(li);
+    });
+  }
 
-  document.getElementById('ai-macros-totales').textContent = `Total: P: ${totProt.toFixed(1)}g | C: ${totCarbs.toFixed(1)}g \vert{} G:${totGrasas.toFixed(1)}g`;
+  const macrosTot = document.getElementById('ai-macros-totales');
+  if (macrosTot) macrosTot.textContent = `Total: P: ${totProt.toFixed(1)}g | C: ${totCarbs.toFixed(1)}g | G: ${totGrasas.toFixed(1)}g`;
 }
 
 document.querySelectorAll('.btn-scale').forEach(btn => {
-  btn.addEventListener('click', () => {
+  btn.onclick = () => {
     const s = parseFloat(btn.getAttribute('data-scale')) || 1;
     renderizarRecetaIAEscalada(s);
-  });
+  };
 });
 
-document.getElementById('btn-guardar-receta-ia').addEventListener('click', async () => {
+safeOn('btn-guardar-receta-ia', 'click', async () => {
   if (!recetaIAPendiente) return;
 
-  const database = await asegurarDB();
+  const database = await conectarDB();
   const tx = database.transaction(['recetas'], 'readwrite');
   tx.objectStore('recetas').add(recetaIAPendiente);
   tx.oncomplete = () => {
@@ -1471,91 +1461,74 @@ document.getElementById('btn-guardar-receta-ia').addEventListener('click', async
    SECCIÓN: MODO COCINA (VOZ)
    ============================================================ */
 const modalCocina = document.getElementById('modal-modo-cocina');
-const btnIniciarCocina = document.getElementById('btn-iniciar-modo-cocina');
-const btnCerrarCocina = document.getElementById('btn-cerrar-cocina');
-const btnCocinaAnt = document.getElementById('btn-cocina-anterior');
-const btnCocinaSig = document.getElementById('btn-cocina-siguiente');
-const btnVozPaso = document.getElementById('btn-voz-paso');
 
-if (btnIniciarCocina) {
-  btnIniciarCocina.addEventListener('click', () => {
-    if (!recetaIABaseOriginal || !recetaIABaseOriginal.pasos || recetaIABaseOriginal.pasos.length === 0) {
-      return alert('Genera una receta primero.');
-    }
-    pasoCocinaActual = 0;
-    actualizarVistaModoCocina();
-    modalCocina.classList.remove('hidden');
-  });
-}
+safeOn('btn-iniciar-modo-cocina', 'click', () => {
+  if (!recetaIABaseOriginal || !recetaIABaseOriginal.pasos || recetaIABaseOriginal.pasos.length === 0) {
+    return alert('Genera una receta primero.');
+  }
+  pasoCocinaActual = 0;
+  actualizarVistaModoCocina();
+  if (modalCocina) modalCocina.classList.remove('hidden');
+});
 
-if (btnCerrarCocina) {
-  btnCerrarCocina.addEventListener('click', () => {
-    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
-    modalCocina.classList.add('hidden');
-  });
-}
+safeOn('btn-cerrar-cocina', 'click', () => {
+  if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+  if (modalCocina) modalCocina.classList.add('hidden');
+});
 
 function actualizarVistaModoCocina() {
   const pasos = recetaIABaseOriginal.pasos || [];
   const tot = pasos.length;
 
   document.getElementById('cocina-receta-titulo').textContent = recetaIAPendiente.nombre;
-  document.getElementById('cocina-paso-contador').textContent = `Paso ${pasoCocinaActual + 1} de${tot}`;
+  document.getElementById('cocina-paso-contador').textContent = `Paso ${pasoCocinaActual + 1} de ${tot}`;
   document.getElementById('cocina-paso-texto').textContent = pasos[pasoCocinaActual];
 
   const resIng = (recetaIAPendiente.ingredientes || []).map(i => `${i.nombre} (${i.gramos.toFixed(0)}g)`).join(' • ');
   document.getElementById('cocina-resumen-ingredientes').textContent = `Ingredientes: ${resIng}`;
 
-  btnCocinaAnt.disabled = (pasoCocinaActual === 0);
-  btnCocinaSig.textContent = (pasoCocinaActual === tot - 1) ? '✓ ¡Listo!' : 'Siguiente ➡';
+  const btnAnt = document.getElementById('btn-cocina-anterior');
+  const btnSig = document.getElementById('btn-cocina-siguiente');
+  if (btnAnt) btnAnt.disabled = (pasoCocinaActual === 0);
+  if (btnSig) btnSig.textContent = (pasoCocinaActual === tot - 1) ? '✓ ¡Listo!' : 'Siguiente ➡';
 }
 
-if (btnCocinaAnt) {
-  btnCocinaAnt.addEventListener('click', () => {
-    if (pasoCocinaActual > 0) {
-      pasoCocinaActual--;
-      actualizarVistaModoCocina();
-    }
-  });
-}
+safeOn('btn-cocina-anterior', 'click', () => {
+  if (pasoCocinaActual > 0) {
+    pasoCocinaActual--;
+    actualizarVistaModoCocina();
+  }
+});
 
-if (btnCocinaSig) {
-  btnCocinaSig.addEventListener('click', () => {
-    const pasos = recetaIABaseOriginal.pasos || [];
-    if (pasoCocinaActual < pasos.length - 1) {
-      pasoCocinaActual++;
-      actualizarVistaModoCocina();
-    } else {
-      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
-      modalCocina.classList.add('hidden');
-      alert('¡Buen provecho! Receta completada.');
-    }
-  });
-}
+safeOn('btn-cocina-siguiente', 'click', () => {
+  const pasos = recetaIABaseOriginal?.pasos || [];
+  if (pasoCocinaActual < pasos.length - 1) {
+    pasoCocinaActual++;
+    actualizarVistaModoCocina();
+  } else {
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    if (modalCocina) modalCocina.classList.add('hidden');
+    alert('¡Buen provecho! Receta completada.');
+  }
+});
 
-if (btnVozPaso) {
-  btnVozPaso.addEventListener('click', () => {
-    if (!('speechSynthesis' in window)) {
-      alert('La síntesis de voz no está disponible en este navegador.');
-      return;
-    }
-
-    window.speechSynthesis.cancel();
-    const texto = document.getElementById('cocina-paso-texto').textContent;
-    const locucion = new SpeechSynthesisUtterance(texto);
-    locucion.lang = 'es-ES';
-    locucion.rate = 0.95;
-    window.speechSynthesis.speak(locucion);
-  });
-}
+safeOn('btn-voz-paso', 'click', () => {
+  if (!('speechSynthesis' in window)) {
+    alert('La síntesis de voz no está disponible en este navegador.');
+    return;
+  }
+  window.speechSynthesis.cancel();
+  const texto = document.getElementById('cocina-paso-texto').textContent;
+  const locucion = new SpeechSynthesisUtterance(texto);
+  locucion.lang = 'es-ES';
+  locucion.rate = 0.95;
+  window.speechSynthesis.speak(locucion);
+});
 
 /* ============================================================
    SECCIÓN: MEZCLADOR PERSONALIZADO
    ============================================================ */
-const mezcladorFiltro = document.getElementById('mezclador-filtro');
-if (mezcladorFiltro) {
-  mezcladorFiltro.addEventListener('input', () => poblarSelectMezclador(mezcladorFiltro.value));
-}
+safeOn('mezclador-filtro', 'input', (e) => poblarSelectMezclador(e.target.value));
 
 function poblarSelectMezclador(filtro = '') {
   const sel = document.getElementById('mezclador-select-alimento');
@@ -1564,22 +1537,15 @@ function poblarSelectMezclador(filtro = '') {
   const fNorm = normalizarTexto(filtro);
 
   const alis = alimentosCache.filter(a => normalizarTexto(a.nombre).includes(fNorm));
-  alis.forEach(a => sel.appendChild(new Option(`${a.nombre} (${a.kcal} kcal/100g \vert{} P:${a.proteinas}g)`, a.id)));
+  alis.forEach(a => sel.appendChild(new Option(`${a.nombre} (${a.kcal} kcal/100g | P:${a.proteinas}g)`, a.id)));
 }
 
-const selectTipoObjetivo = document.getElementById('mezclador-tipo-objetivo');
-const contKcalManual = document.getElementById('contenedor-kcal-manual');
-if (selectTipoObjetivo) {
-  selectTipoObjetivo.addEventListener('change', () => {
-    if (selectTipoObjetivo.value === 'manual') {
-      contKcalManual.classList.remove('hidden');
-    } else {
-      contKcalManual.classList.add('hidden');
-    }
-  });
-}
+safeOn('mezclador-tipo-objetivo', 'change', (e) => {
+  const cont = document.getElementById('contenedor-kcal-manual');
+  if (cont) cont.classList.toggle('hidden', e.target.value !== 'manual');
+});
 
-document.getElementById('btn-agregar-alimento-mezcla').addEventListener('click', () => {
+safeOn('btn-agregar-alimento-mezcla', 'click', () => {
   const sel = document.getElementById('mezclador-select-alimento');
   const id = parseInt(sel.value, 10);
   if (!id) return;
@@ -1607,7 +1573,7 @@ function renderizarSeleccionMezclador() {
     if (a) {
       const li = document.createElement('li');
       li.innerHTML = `
-        <span><strong>${a.nombre}</strong> (${a.kcal} kcal/100g - Prot:${a.proteinas}g)</span>
+        <span><strong>${a.nombre}</strong> (${a.kcal} kcal/100g - Prot: ${a.proteinas}g)</span>
         <button class="btn-del" onclick="quitarDeMezclador(${idx})">x</button>
       `;
       lista.appendChild(li);
@@ -1620,9 +1586,10 @@ window.quitarDeMezclador = function(idx) {
   renderizarSeleccionMezclador();
 };
 
-document.getElementById('btn-calcular-mezcla-personalizada').addEventListener('click', () => {
+safeOn('btn-calcular-mezcla-personalizada', 'click', () => {
   const rest = window.restantesGlobales || { kcal: 0, proteinas: 0, carbohidratos: 0, grasas: 0 };
   const cont = document.getElementById('contenedor-sugerencias-personalizadas');
+  if (!cont) return;
   cont.innerHTML = '';
 
   if (alimentosMezclador.length < 2) {
@@ -1630,11 +1597,11 @@ document.getElementById('btn-calcular-mezcla-personalizada').addEventListener('c
     return;
   }
 
-  const tipoObj = document.getElementById('mezclador-tipo-objetivo').value;
+  const tipoObj = document.getElementById('mezclador-tipo-objetivo')?.value;
   let totalKcal = 0;
 
   if (tipoObj === 'manual') {
-    totalKcal = parseFloat(document.getElementById('mezclador-kcal-manual').value) || 0;
+    totalKcal = parseFloat(document.getElementById('mezclador-kcal-manual')?.value) || 0;
     if (totalKcal <= 0) {
       cont.innerHTML = '<p style="color: var(--danger); font-weight: bold;">Ingresa una cantidad válida de Kcal mayor a 0.</p>';
       return;
@@ -1766,4 +1733,289 @@ document.getElementById('btn-calcular-mezcla-personalizada').addEventListener('c
     if (excesoG > 0) alertas.push(`<span class="alerta-exceso">+${excesoG.toFixed(1)}g Grasas</span>`);
 
     card.innerHTML = `
-      <h4>${est.titulo}
+      <h4>${est.titulo}</h4>
+      <small style="color: var(--primary); font-weight: 600;">${est.tipo}</small>
+      <div style="margin: 0.5rem 0; line-height: 1.4;">${est.desglose}</div>
+      <div style="font-size:0.85rem; margin-top:0.4rem; border-top: 1px solid var(--border); padding-top: 0.4rem;">
+        Aporte: <strong>${totalKcal.toFixed(0)} kcal</strong> | 
+        <span class="${excesoP > 0 ? 'alerta-exceso' : ''}">P: ${est.totales.p.toFixed(1)}g</span> | 
+        <span class="${excesoC > 0 ? 'alerta-exceso' : ''}">C: ${est.totales.c.toFixed(1)}g</span> | 
+        <span class="${excesoG > 0 ? 'alerta-exceso' : ''}">G: ${est.totales.g.toFixed(1)}g</span>
+      </div>
+      ${alertas.length > 0 ? `<div style="font-size:0.75rem; margin-top:0.4rem;">Exceso advertido: ${alertas.join(' | ')}</div>` : '<div style="font-size:0.75rem; color:var(--success); margin-top:0.4rem;">✓ Cuadra dentro de tus macros</div>'}
+    `;
+    cont.appendChild(card);
+  });
+});
+
+/* ============================================================
+   SECCIÓN: SUGERENCIAS AUTOMÁTICAS
+   ============================================================ */
+safeOn('btn-calcular-sugerencias', 'click', () => {
+  const rest = window.restantesGlobales || { kcal: 0, proteinas: 0, carbohidratos: 0, grasas: 0 };
+  const cont = document.getElementById('contenedor-sugerencias');
+  if (!cont) return;
+  cont.innerHTML = '';
+
+  if (rest.kcal <= 0) {
+    cont.innerHTML = '<p style="color:var(--text-muted)">Ya has alcanzado tu meta de Kcal del día.</p>';
+    return;
+  }
+
+  const modo = document.getElementById('sug-modo')?.value || 'todos';
+  const sugerencias = [];
+
+  if (modo === 'individuales' || modo === 'todos') {
+    const catalogo = [
+      ...alimentosCache.map(a => ({ nombre: a.nombre, kcal100: a.kcal, p100: a.proteinas, c100: a.carbohidratos, g100: a.grasas, tipo: 'Alimento' })),
+      ...recetasCache.map(r => ({ nombre: r.nombre, kcal100: r.kcalPor100g, p100: r.protPor100g, c100: r.carbsPor100g, g100: r.grasasPor100g, tipo: 'Receta' }))
+    ];
+
+    catalogo.forEach(item => {
+      if (item.kcal100 <= 0) return;
+      const gReq = (rest.kcal / item.kcal100) * 100;
+      const f = gReq / 100;
+
+      const pAporte = item.p100 * f;
+      const cAporte = item.c100 * f;
+      const gAporte = item.g100 * f;
+
+      sugerencias.push({
+        titulo: item.nombre,
+        tipo: item.tipo,
+        descripcion: `Consumir exactamente: <span class="sug-gramos">${gReq.toFixed(1)} g</span>`,
+        kcal: rest.kcal,
+        p: pAporte,
+        c: cAporte,
+        g: gAporte,
+        excesoP: pAporte > rest.proteinas + 0.5 ? pAporte - rest.proteinas : 0,
+        excesoC: cAporte > rest.carbohidratos + 0.5 ? cAporte - rest.carbohidratos : 0,
+        excesoG: gAporte > rest.grasas + 0.5 ? gAporte - rest.grasas : 0
+      });
+    });
+  }
+
+  if (modo === 'combinaciones' || modo === 'todos') {
+    recetasCache.forEach(rec => {
+      if (rec.ingredientes && rec.ingredientes.length >= 2) {
+        const ing1 = alimentosCache.find(a => a.id === rec.ingredientes[0].alimentoId);
+        const ing2 = alimentosCache.find(a => a.id === rec.ingredientes[1].alimentoId);
+
+        if (ing1 && ing2 && ing1.kcal > 0 && ing2.kcal > 0) {
+          const prop1 = rec.ingredientes[0].gramos;
+          const prop2 = rec.ingredientes[1].gramos;
+          const kcalMezclaOriginal = (ing1.kcal * prop1 / 100) + (ing2.kcal * prop2 / 100);
+
+          if (kcalMezclaOriginal > 0) {
+            const factorEscala = rest.kcal / kcalMezclaOriginal;
+            const g1Final = prop1 * factorEscala;
+            const g2Final = prop2 * factorEscala;
+
+            const pAporte = (ing1.proteinas * g1Final / 100) + (ing2.proteinas * g2Final / 100);
+            const cAporte = (ing1.carbohidratos * g1Final / 100) + (ing2.carbohidratos * g2Final / 100);
+            const gAporte = (ing1.grasas * g1Final / 100) + (ing2.grasas * g2Final / 100);
+
+            sugerencias.push({
+              titulo: `${ing1.nombre} + ${ing2.nombre}`,
+              tipo: `Combinación habitual (${rec.nombre})`,
+              descripcion: `
+                • ${ing1.nombre}: <span class="sug-gramos">${g1Final.toFixed(1)} g</span><br>
+                • ${ing2.nombre}: <span class="sug-gramos">${g2Final.toFixed(1)} g</span>
+              `,
+              kcal: rest.kcal,
+              p: pAporte,
+              c: cAporte,
+              g: gAporte,
+              excesoP: pAporte > rest.proteinas + 0.5 ? pAporte - rest.proteinas : 0,
+              excesoC: cAporte > rest.carbohidratos + 0.5 ? cAporte - rest.carbohidratos : 0,
+              excesoG: gAporte > rest.grasas + 0.5 ? gAporte - rest.grasas : 0
+            });
+          }
+        }
+      }
+    });
+  }
+
+  if (sugerencias.length === 0) {
+    cont.innerHTML = '<p style="color:var(--text-muted)">No hay sugerencias disponibles.</p>';
+    return;
+  }
+
+  sugerencias.forEach(sug => {
+    const card = document.createElement('div');
+    card.className = 'sugerencia-card';
+
+    let alertas = [];
+    if (sug.excesoP > 0) alertas.push(`<span class="alerta-exceso">+${sug.excesoP.toFixed(1)}g Prot</span>`);
+    if (sug.excesoC > 0) alertas.push(`<span class="alerta-exceso">+${sug.excesoC.toFixed(1)}g Carbs</span>`);
+    if (sug.excesoG > 0) alertas.push(`<span class="alerta-exceso">+${sug.excesoG.toFixed(1)}g Grasas</span>`);
+
+    card.innerHTML = `
+      <h4>${sug.titulo} <small style="color:var(--text-muted)">(${sug.tipo})</small></h4>
+      <div style="margin: 0.4rem 0;">${sug.descripcion}</div>
+      <div style="font-size:0.85rem; margin-top:0.3rem;">
+        Aporta: <strong>${sug.kcal.toFixed(0)} kcal</strong> | 
+        <span class="${sug.excesoP > 0 ? 'alerta-exceso' : ''}">P: ${sug.p.toFixed(1)}g</span> | 
+        <span class="${sug.excesoC > 0 ? 'alerta-exceso' : ''}">C: ${sug.c.toFixed(1)}g</span> | 
+        <span class="${sug.excesoG > 0 ? 'alerta-exceso' : ''}">G: ${sug.g.toFixed(1)}g</span>
+      </div>
+      ${alertas.length > 0 ? `<div style="font-size:0.75rem; margin-top:0.4rem;">Exceso advertido: ${alertas.join(' | ')}</div>` : '<div style="font-size:0.75rem; color:var(--success); margin-top:0.4rem;">✓ Cuadra perfectamente dentro de tus macros</div>'}
+    `;
+    cont.appendChild(card);
+  });
+});
+
+/* ============================================================
+   SECCIÓN: RESPALDO LOCAL (EXPORTAR E IMPORTAR JSON)
+   ============================================================ */
+async function generarObjetoRespaldo() {
+  const database = await conectarDB();
+  return new Promise((resolve, reject) => {
+    const tx = database.transaction(['alimentos', 'recetas', 'diario', 'config'], 'readonly');
+    const respaldo = {
+      versionApp: 'CoffeeBreak_v14',
+      fechaExportacion: new Date().toISOString(),
+      alimentos: [],
+      recetas: [],
+      diario: [],
+      config: []
+    };
+
+    tx.objectStore('alimentos').getAll().onsuccess = (e) => respaldo.alimentos = e.target.result || [];
+    tx.objectStore('recetas').getAll().onsuccess = (e) => respaldo.recetas = e.target.result || [];
+    tx.objectStore('diario').getAll().onsuccess = (e) => respaldo.diario = e.target.result || [];
+    tx.objectStore('config').getAll().onsuccess = (e) => respaldo.config = e.target.result || [];
+
+    tx.oncomplete = () => resolve(respaldo);
+    tx.onerror = (e) => reject(e);
+  });
+}
+
+safeOn('btn-generar-texto-backup', 'click', async () => {
+  try {
+    const data = await generarObjetoRespaldo();
+    const jsonStr = JSON.stringify(data, null, 2);
+    const txtArea = document.getElementById('txt-backup-generado');
+    const contenedor = document.getElementById('contenedor-texto-exportado');
+
+    if (txtArea) txtArea.value = jsonStr;
+    if (contenedor) {
+      contenedor.classList.remove('hidden');
+      contenedor.scrollIntoView({ behavior: 'smooth' });
+    }
+  } catch (err) {
+    console.error(err);
+    alert('Error al leer los datos locales.');
+  }
+});
+
+safeOn('btn-seleccionar-todo', 'click', () => {
+  const txtArea = document.getElementById('txt-backup-generado');
+  if (txtArea) {
+    txtArea.focus();
+    txtArea.select();
+    txtArea.setSelectionRange(0, 999999);
+    alert('Texto seleccionado.');
+  }
+});
+
+safeOn('btn-descargar-archivo', 'click', async () => {
+  try {
+    const data = await generarObjetoRespaldo();
+    const jsonStr = JSON.stringify(data, null, 2);
+    const fileName = `coffeebreak_backup_${new Date().toISOString().split('T')[0]}.json`;
+
+    const encodedData = 'data:application/json;charset=utf-8,' + encodeURIComponent(jsonStr);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedData);
+    link.setAttribute('download', fileName);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+  } catch (err) {
+    console.error(err);
+    alert('Usa la opción de copiar texto.');
+  }
+});
+
+async function procesarEInsertarDatos(data) {
+  if (!data || (!data.alimentos && !data.recetas && !data.diario)) {
+    alert('El contenido no corresponde a un respaldo válido.');
+    return;
+  }
+
+  const database = await conectarDB();
+  const tx = database.transaction(['alimentos', 'recetas', 'diario', 'config'], 'readwrite');
+
+  if (Array.isArray(data.alimentos)) {
+    const store = tx.objectStore('alimentos');
+    data.alimentos.forEach(item => store.put(item));
+  }
+  if (Array.isArray(data.recetas)) {
+    const store = tx.objectStore('recetas');
+    data.recetas.forEach(item => store.put(item));
+  }
+  if (Array.isArray(data.diario)) {
+    const store = tx.objectStore('diario');
+    data.diario.forEach(item => store.put(item));
+  }
+  if (Array.isArray(data.config)) {
+    const store = tx.objectStore('config');
+    data.config.forEach(item => store.put(item));
+  }
+
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => {
+      cargarTodo();
+      resolve();
+    };
+    tx.onerror = (e) => {
+      console.error(e);
+      reject(e.target.error);
+    };
+  });
+}
+
+safeOn('btn-restaurar-texto', 'click', async () => {
+  const txt = document.getElementById('txt-importar-manual')?.value.trim();
+  if (!txt) return alert('Pega el texto del respaldo primero.');
+
+  try {
+    const data = JSON.parse(txt);
+    await procesarEInsertarDatos(data);
+    document.getElementById('txt-importar-manual').value = '';
+    alert('✓ ¡Datos locales restaurados!');
+    subirDatosALaNube(false);
+  } catch (err) {
+    console.error(err);
+    alert('El texto no es un JSON válido.');
+  }
+});
+
+safeOn('input-importar-backup', 'change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = async (event) => {
+    try {
+      const data = JSON.parse(event.target.result);
+      await procesarEInsertarDatos(data);
+      e.target.value = '';
+      alert('✓ ¡Archivo restaurado con éxito!');
+      subirDatosALaNube(false);
+    } catch (err) {
+      console.error(err);
+      alert('El archivo no contiene un JSON válido.');
+      e.target.value = '';
+    }
+  };
+  reader.readAsText(file);
+});
+
+// ============================================================
+// 6. ARRANQUE ROBUSTO (EJECUTA INMEDIATAMENTE)
+// ============================================================
+activarPestanas();
+cargarTodo();
