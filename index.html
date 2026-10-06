@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Coffee Break - Food Metrics</title>
-  <link rel="stylesheet" href="./styles.css?v=31">
+  <link rel="stylesheet" href="./styles.css?v=32">
   <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#1e1e24">
   <link rel="apple-touch-icon" href="./icon.jpg">
@@ -115,7 +115,7 @@
 
           <div id="contenedor-ai-kcal-manual" class="hidden" style="width: 100%;">
             <label style="display: block; margin-bottom: 0.3rem;">Kcal deseadas:</label>
-            <input type="number" id="ai-kcal-manual" placeholder="Ej: 450" min="50" step="10">
+            <input type="number" id="ai-kcal-manual" placeholder="Ej: 450" min="50" step="1">
           </div>
 
           <div style="width: 100%;">
@@ -239,7 +239,7 @@
 
           <div id="contenedor-kcal-manual" class="hidden">
             <label>Kcal objetivo:</label>
-            <input type="number" id="mezclador-kcal-manual" placeholder="Ej: 350" min="10" step="10">
+            <input type="number" id="mezclador-kcal-manual" placeholder="Ej: 350" min="10" step="1">
           </div>
 
           <div>
@@ -530,7 +530,7 @@
       </div>
     </section>
 
-    <!-- ================= PESTAÑA: METAS (CON CALCULADORA MIFFLIN-ST JEOR) ================= -->
+    <!-- ================= PESTAÑA: METAS (CON CALCULADORA MIFFLIN-ST JEOR CORREGIDA) ================= -->
     <section id="tab-metas" class="tab-content">
       <div class="card" style="border-color: rgba(99, 102, 241, 0.4);">
         <h3>🧬 Calculadora de Necesidades Energéticas (Mifflin-St Jeor)</h3>
@@ -612,17 +612,17 @@
         </div>
       </div>
 
-      <!-- FORMULARIO DE METAS DIARIAS -->
+      <!-- FORMULARIO DE METAS DIARIAS (STEP="1" CORREGIDO PARA CUALQUIER NÚMERO) -->
       <div class="card" style="margin-top: 1.5rem;">
         <h3>Tus Metas Nutricionales Oficiales (Editables)</h3>
         <p style="color: var(--text-muted); font-size: 0.9rem;">
-          Estos son los límites diarios que controlan los marcadores de tu Diario. Modifícalos a tu gusto y presiona Actualizar.
+          Estos son los límites diarios que controlan los marcadores de tu Diario. Modifícalos a tu gusto y presiona Guardar.
         </p>
 
         <form id="form-metas" style="margin-top: 1rem;">
           <div class="form-group">
             <label>Meta Calorías (kcal):</label>
-            <input type="number" id="meta-kcal" required min="500" step="10">
+            <input type="number" id="meta-kcal" required min="500" step="1">
           </div>
           <div class="form-group">
             <label>Meta Proteínas (g):</label>
@@ -760,6 +760,6 @@
     </div>
   </div>
 
-  <script src="./app.js?v=31"></script>
+  <script src="./app.js?v=32"></script>
 </body>
 </html>
